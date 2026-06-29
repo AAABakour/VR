@@ -103,6 +103,59 @@ Suggested smoke test:
 - Reconfirmed the Phase 4 scene keeps `PaintEmitter` and `PaintParticleSimulator` disabled by default only in `MainSimulationScene_Phase04_BucketSphNozzle.unity`.
 - No canvas impact extraction or painting bridge is implemented in Phase 4.1.
 
+## Phase 4.2 Demo Readiness and World-Space Emission Fixes
+
+Phase 4.2 was needed because the Phase 4 scene had the architecture in place but did not demonstrate the feature clearly in Play Mode. The old legacy stats UI could still suggest `Particles: 0`, the SPH particles were too subtle, and nozzle emission risked being interpreted in the bucket frame after particles left the nozzle.
+
+The main technical correction is coordinate-frame separation:
+
+- `InternalBucketFluid` uses `GpuSphSimulationDomain.BucketCylinder`.
+- Bucket-cylinder particles are initialized and rendered in the bucket frame.
+- Bucket gravity can include bucket-local/inertial effects from `BucketSphCollisionProvider`.
+- `NozzleEmission` uses `GpuSphSimulationDomain.OpenWorldWithBounds`.
+- Open-world particles are emitted from the real `PaintNozzle` / `nozzlePoint` world position.
+- `BucketSphNozzleEmitter` now asks `GpuSphSolver` to convert world nozzle position, direction, and inherited bucket velocity into the active simulation frame.
+- In open-world mode, `GpuSphSolver` uses the solver/root transform as the simulation frame, so already-emitted particles fall independently in world/root space instead of staying visually locked to the swinging bucket.
+- `GpuSphParticleRenderer` renders using the solver's active simulation local-to-world matrix.
+
+Default Phase 4 scene behavior:
+
+- `MainSimulationScene_Phase04_BucketSphNozzle.unity` starts in `NozzleEmission`.
+- Debug profile is used by default.
+- Emission is enabled immediately.
+- Legacy `PaintEmitter` and `PaintParticleSimulator` remain in the scene but are disabled.
+- Legacy `SimulationStatsUI` is hidden in this Phase 4 scene so the demo does not show misleading CPU paint particle counts.
+
+Keyboard controls shown by `BucketSphDebugUI`:
+
+- `R`: reset Bucket SPH.
+- `1`: internal bucket fluid mode.
+- `2`: nozzle emission mode.
+- `3`: internal plus emission is marked as future work.
+- `E`: toggle emission.
+- `F1`: Debug profile.
+- `F2`: Presentation profile.
+- `F3`: Professor 1M profile.
+- `F4`: VR Safe profile.
+
+Mode testing:
+
+- Internal mode: press `1`, then `R`. Particles initialize inside the bucket cylinder and render in the bucket frame.
+- Nozzle mode: press `2`, then `R` or wait for emission. Particles emit from the moving nozzle, inherit bucket velocity, and fall in world/root space.
+- Professor 1M: press `F3`. The profile remains supported through its render stride.
+
+`InternalAndEmission` is postponed in Phase 4.2. A single solver has one coordinate frame at a time, so correct simultaneous bucket-local internal fluid and world-space external emission should use a two-solver or mixed-domain architecture in a later phase. Phase 4.2 does not fake this mode.
+
+Known Phase 4.2 limitations:
+
+- SPH still does not paint the canvas.
+- There is no SPH impact extraction.
+- There is no GPU-to-canvas bridge.
+- No full particle readback or CPU particle simulation is added.
+- Bucket collision remains an approximate cylinder from `BucketCollisionProxy`.
+
+Canvas painting remains Phase 5 work.
+
 ## Phase 5 Focus
 
 Phase 5 should add sparse GPU impact extraction and a controlled bridge from SPH impacts to canvas painting. That work should avoid full particle readback, avoid CPU particle loops, and keep legacy painting available until visual parity is proven.

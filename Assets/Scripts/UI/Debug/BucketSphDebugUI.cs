@@ -9,7 +9,8 @@ public class BucketSphDebugUI : MonoBehaviour
     public BucketSphNozzleEmitter nozzleEmitter;
     public BucketMotionDataProvider motionDataProvider;
     public bool autoCreateUi = true;
-    public Vector2 anchoredPosition = new Vector2(14f, -140f);
+    public bool enableKeyboardShortcuts = true;
+    public Vector2 anchoredPosition = new Vector2(14f, -14f);
 
     private Text readout;
     private readonly StringBuilder builder = new StringBuilder(512);
@@ -25,13 +26,15 @@ public class BucketSphDebugUI : MonoBehaviour
 
     private void Update()
     {
+        HandleKeyboardShortcuts();
+
         if (readout == null)
         {
             return;
         }
 
         builder.Length = 0;
-        builder.AppendLine("Bucket SPH Phase 4");
+        builder.AppendLine("Bucket SPH Phase 4.2");
 
         if (controller != null)
         {
@@ -39,24 +42,37 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine(controller.CurrentMode.ToString());
             builder.Append("Profile: ");
             builder.AppendLine(controller.ActiveProfile != null ? controller.ActiveProfile.name : "Runtime");
+
+            if (controller.CurrentMode == BucketSphMode.InternalAndEmission && !controller.internalAndEmissionSupported)
+            {
+                builder.AppendLine("Internal + Emission: postponed");
+            }
         }
 
         if (stats != null)
         {
-            builder.Append("Particles: ");
+            builder.Append("Simulated: ");
             builder.Append(stats.simulatedParticleCount);
-            builder.Append(" / rendered ");
+            builder.Append("  Rendered: ");
             builder.AppendLine(stats.renderedParticleCount.ToString());
+            builder.Append("Render stride: ");
+            builder.AppendLine(stats.renderStride.ToString());
             builder.Append("GPU MB: ");
             builder.AppendLine(stats.estimatedTotalGpuMemoryMb.ToString("0.0"));
             builder.Append("Grid: ");
-            builder.Append(stats.gridDimensions);
-            builder.Append(" overflow ");
+            builder.AppendLine(stats.gridDimensions.ToString());
+            builder.Append("Max/cell: ");
+            builder.Append(stats.maxParticlesPerCell);
+            builder.Append("  Overflow: ");
             builder.AppendLine(stats.gridOverflowCount.ToString());
+            builder.Append("Solver initialized: ");
+            builder.Append(stats.solverInitialized ? "Yes" : "No");
+            builder.Append("  Buffers: ");
+            builder.AppendLine(stats.buffersValid ? "Valid" : "Invalid");
 
             if (stats.gridOverflowCount > 0)
             {
-                builder.AppendLine("WARNING: SPH grid overflow detected. Increase grid capacity, reduce particle density, or use a higher render stride/profile budget.");
+                builder.AppendLine("WARNING: SPH grid overflow detected.");
             }
         }
 
@@ -69,6 +85,8 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine("/s");
             builder.Append("Last burst: ");
             builder.AppendLine(nozzleEmitter.EmittedThisFrame.ToString());
+            builder.Append("Nozzle world: ");
+            builder.AppendLine(nozzleEmitter.NozzleWorldPosition.ToString("F2"));
         }
 
         if (motionDataProvider != null)
@@ -77,7 +95,63 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine(motionDataProvider.WorldVelocity.magnitude.ToString("0.00"));
         }
 
+        builder.AppendLine("Controls: R Reset | 1 Internal | 2 Nozzle | 3 Mixed future | E Emit");
+        builder.AppendLine("Profiles: F1 Debug | F2 Presentation | F3 Professor 1M | F4 VR Safe");
+
         readout.text = builder.ToString();
+    }
+
+    private void HandleKeyboardShortcuts()
+    {
+        if (!enableKeyboardShortcuts)
+        {
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            ResetFluid();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+        {
+            SetInternalFluidMode();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha2))
+        {
+            SetNozzleEmissionMode();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha3))
+        {
+            SetInternalAndEmissionMode();
+        }
+
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            ToggleEmission();
+        }
+
+        if (Input.GetKeyDown(KeyCode.F1))
+        {
+            ApplyDebugProfile();
+        }
+
+        if (Input.GetKeyDown(KeyCode.F2))
+        {
+            ApplyPresentationProfile();
+        }
+
+        if (Input.GetKeyDown(KeyCode.F3))
+        {
+            ApplyProfessorBenchmarkProfile();
+        }
+
+        if (Input.GetKeyDown(KeyCode.F4))
+        {
+            ApplyVrSafeProfile();
+        }
     }
 
     [ContextMenu("Resolve Debug UI References")]
@@ -219,6 +293,6 @@ public class BucketSphDebugUI : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = new Vector2(360f, 190f);
+        rect.sizeDelta = new Vector2(520f, 340f);
     }
 }

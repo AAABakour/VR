@@ -32,6 +32,24 @@ public class BucketSphNozzleEmitter : MonoBehaviour
         get { return emittedThisFrame; }
     }
 
+    public Vector3 NozzleWorldPosition
+    {
+        get
+        {
+            if (nozzlePoint != null)
+            {
+                return nozzlePoint.position;
+            }
+
+            if (collisionProvider != null)
+            {
+                return collisionProvider.BucketRoot.TransformPoint(collisionProvider.NozzleLocalPosition);
+            }
+
+            return transform.position;
+        }
+    }
+
     private void Awake()
     {
         ResolveReferences();
@@ -88,32 +106,20 @@ public class BucketSphNozzleEmitter : MonoBehaviour
             return;
         }
 
-        BucketSphCollisionProvider provider = collisionProvider;
-        Vector3 localPosition = provider != null ? provider.NozzleLocalPosition : Vector3.zero;
-        Vector3 localDirection = Vector3.down;
-        Vector3 localVelocity = Vector3.zero;
+        Vector3 worldPosition = NozzleWorldPosition;
+        Vector3 worldDirection = nozzlePoint != null ? -nozzlePoint.up : Vector3.down;
+        Vector3 worldVelocity = bucketMotionDataProvider != null
+            ? bucketMotionDataProvider.WorldVelocity * inheritedBucketVelocity
+            : Vector3.zero;
 
-        if (provider != null)
-        {
-            Transform root = provider.BucketRoot;
-            if (nozzlePoint != null)
-            {
-                localPosition = root.InverseTransformPoint(nozzlePoint.position);
-                localDirection = root.InverseTransformDirection(-nozzlePoint.up);
-            }
-
-            localVelocity = provider.LocalBucketVelocity * inheritedBucketVelocity;
-        }
-        else if (nozzlePoint != null)
-        {
-            localPosition = nozzlePoint.localPosition;
-            localDirection = -nozzlePoint.up;
-        }
+        Vector3 simulationPosition = solver.WorldToSimulationPosition(worldPosition);
+        Vector3 simulationDirection = solver.WorldToSimulationDirection(worldDirection);
+        Vector3 simulationVelocity = solver.WorldToSimulationVelocity(worldVelocity);
 
         solver.EmitFromNozzle(
-            localPosition,
-            localDirection,
-            localVelocity,
+            simulationPosition,
+            simulationDirection,
+            simulationVelocity,
             emitCount,
             nozzleRadius,
             emissionSpeed,

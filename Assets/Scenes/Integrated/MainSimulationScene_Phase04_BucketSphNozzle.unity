@@ -270,7 +270,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &93900572
 RectTransform:
   m_ObjectHideFlags: 0
@@ -4905,7 +4905,8 @@ MonoBehaviour:
   sphComputeShader: {fileID: 7200000, guid: a9c60fbb5803423ea707e6b0323b18b7, type: 3}
   settingsTemplate: {fileID: 11400000, guid: 95aa738160ee4249998d14fb94b2064d, type: 2}
   fluidBox: {fileID: 0}
-  simulationDomain: 1
+  simulationDomain: 2
+  openWorldSimulationRoot: {fileID: 4200000001}
   bucketCollisionProvider: {fileID: 4200000005}
   debugStats: {fileID: 4200000004}
   initializeOnStart: 0
@@ -4928,8 +4929,8 @@ MonoBehaviour:
   fluidBox: {fileID: 0}
   particleMaterial: {fileID: 2100000, guid: 0d2ef2dc083d411a958d0d42950ce17e, type: 2}
   renderCamera: {fileID: 330585545}
-  particleSize: 0.04
-  particleColor: {r: 0.16, g: 0.64, b: 0.92, a: 0.78}
+  particleSize: 0.075
+  particleColor: {r: 0.08, g: 0.92, b: 1, a: 0.94}
 --- !u!114 &4200000004
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4959,7 +4960,7 @@ MonoBehaviour:
   motionDataProvider: {fileID: 4100000003}
   bucketRoot: {fileID: 239325981}
   nozzlePoint: {fileID: 823100762}
-  externalBoundsSize: {x: 4.5, y: 4.5, z: 4.5}
+  externalBoundsSize: {x: 6, y: 5, z: 5}
   allowNozzleExit: 1
   autoResolveOnAwake: 1
   showGizmos: 1
@@ -4981,7 +4982,8 @@ MonoBehaviour:
   nozzleEmitter: {fileID: 4200000102}
   bucketRigController: {fileID: 4100000002}
   bucketMotionDataProvider: {fileID: 4100000003}
-  startupMode: 0
+  startupMode: 1
+  internalAndEmissionSupported: 0
   initializeOnStart: 1
   disableLegacyPaintOnStart: 1
   legacyPaintEmitter: {fileID: 823100763}
@@ -5055,11 +5057,11 @@ MonoBehaviour:
   bucketMotionDataProvider: {fileID: 4100000003}
   nozzlePoint: {fileID: 823100762}
   emitOnUpdate: 0
-  particlesPerSecond: 2400
-  maxParticlesPerFrame: 2048
-  nozzleRadius: 0.04
-  emissionSpeed: 2.4
-  velocitySpread: 0.45
+  particlesPerSecond: 6200
+  maxParticlesPerFrame: 4096
+  nozzleRadius: 0.055
+  emissionSpeed: 3.1
+  velocitySpread: 0.55
   inheritedBucketVelocity: 0.55
   allowNozzleExit: 1
 --- !u!1 &4200000200
@@ -5111,7 +5113,8 @@ MonoBehaviour:
   nozzleEmitter: {fileID: 4200000102}
   motionDataProvider: {fileID: 4100000003}
   autoCreateUi: 1
-  anchoredPosition: {x: 14, y: -140}
+  enableKeyboardShortcuts: 1
+  anchoredPosition: {x: 14, y: -14}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

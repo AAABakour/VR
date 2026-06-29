@@ -256,7 +256,7 @@ void InitializeNozzleEmission(uint3 id : SV_DispatchThreadID)
     float streamOffset = (float)(index % 96u) * max(_ParticleRadius * 1.6, _InitialSpacing * 0.5);
 
     ParticleState particle;
-    particle.position = _BucketNozzleLocalPosition + right * cos(angle) * radius + up * sin(angle) * radius - direction * streamOffset;
+    particle.position = _BucketNozzleLocalPosition + right * cos(angle) * radius + up * sin(angle) * radius + direction * streamOffset;
     particle.velocity = direction * max(_EmitterSpeed, 0.5) + RandomUnitVector(index + 23u) * _EmitterSpread;
     particle.density = _RestDensity;
     particle.pressure = 0.0;

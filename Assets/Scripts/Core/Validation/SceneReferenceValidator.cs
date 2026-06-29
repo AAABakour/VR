@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
+[DefaultExecutionOrder(160)]
 public class SceneReferenceValidator : MonoBehaviour
 {
     [Header("Validation")]
@@ -412,6 +413,7 @@ public class SceneReferenceValidator : MonoBehaviour
 
     private void ValidatePhaseFourBucketSphReferences(List<string> warnings)
     {
+        RequireReference(warnings, GameObject.Find("SPH_BucketFluidRoot"), "SPH_BucketFluidRoot GameObject");
         RequireReference(warnings, bucketSphFluidController, "BucketSphFluidController");
         RequireReference(warnings, bucketSphNozzleEmitter, "BucketSphNozzleEmitter");
         RequireReference(warnings, bucketSphCollisionProvider, "BucketSphCollisionProvider");
@@ -435,6 +437,7 @@ public class SceneReferenceValidator : MonoBehaviour
             RequireReference(warnings, bucketSphNozzleEmitter.solver, "BucketSphNozzleEmitter.solver");
             RequireReference(warnings, bucketSphNozzleEmitter.collisionProvider, "BucketSphNozzleEmitter.collisionProvider");
             RequireReference(warnings, bucketSphNozzleEmitter.nozzlePoint, "BucketSphNozzleEmitter.nozzlePoint");
+            RequireReference(warnings, bucketSphNozzleEmitter.bucketMotionDataProvider, "BucketSphNozzleEmitter.bucketMotionDataProvider");
         }
 
         if (bucketSphCollisionProvider != null)
@@ -444,6 +447,18 @@ public class SceneReferenceValidator : MonoBehaviour
             RequireReference(warnings, bucketSphCollisionProvider.motionDataProvider, "BucketSphCollisionProvider.motionDataProvider");
             RequireReference(warnings, bucketSphCollisionProvider.bucketRoot, "BucketSphCollisionProvider.bucketRoot");
             RequireReference(warnings, bucketSphCollisionProvider.nozzlePoint, "BucketSphCollisionProvider.nozzlePoint");
+        }
+
+        if (bucketSphDebugUI != null)
+        {
+            RequireReference(warnings, bucketSphDebugUI.controller, "BucketSphDebugUI.controller");
+            RequireReference(warnings, bucketSphDebugUI.stats, "BucketSphDebugUI.stats");
+            RequireReference(warnings, bucketSphDebugUI.nozzleEmitter, "BucketSphDebugUI.nozzleEmitter");
+
+            if (!bucketSphDebugUI.autoCreateUi)
+            {
+                warnings.Add("BucketSphDebugUI.autoCreateUi is disabled; Phase 4 demo may not show SPH stats.");
+            }
         }
 
         if (bucketSphSubsystemAdapter != null)
@@ -457,12 +472,23 @@ public class SceneReferenceValidator : MonoBehaviour
             RequireReference(warnings, gpuSphSolver.settingsTemplate, "GpuSphSolver.settingsTemplate");
             RequireReference(warnings, gpuSphSolver.bucketCollisionProvider, "GpuSphSolver.bucketCollisionProvider");
             RequireReference(warnings, gpuSphSolver.debugStats, "GpuSphSolver.debugStats");
+
+            if (Application.isPlaying && !gpuSphSolver.IsInitialized)
+            {
+                warnings.Add("GpuSphSolver is not initialized in Play Mode.");
+            }
         }
 
         if (gpuSphParticleRenderer != null)
         {
             RequireReference(warnings, gpuSphParticleRenderer.solver, "GpuSphParticleRenderer.solver");
             RequireReference(warnings, gpuSphParticleRenderer.particleMaterial, "GpuSphParticleRenderer.particleMaterial");
+            RequireReference(warnings, gpuSphParticleRenderer.renderCamera, "GpuSphParticleRenderer.renderCamera");
+
+            if (gpuSphParticleRenderer.particleSize <= 0f)
+            {
+                warnings.Add("GpuSphParticleRenderer.particleSize is zero or negative.");
+            }
         }
     }
 

@@ -82,6 +82,8 @@ Current status:
 - Phase 3.1 adds runtime settings copies, grid overflow counters, and expanded debug stats.
 - Phase 4 adds solver domain support for `FluidBox`, `BucketCylinder`, and `OpenWorldWithBounds`.
 - Phase 4 adds GPU kernels for bucket volume initialization, nozzle initialization, nozzle emission, and cylindrical bucket collisions.
+- Phase 4.2 corrects coordinate frames: `BucketCylinder` uses the bucket transform, while `OpenWorldWithBounds` uses the solver/root transform for external nozzle emission.
+- `GpuSphSolver` exposes world-to-simulation conversion APIs so emitters can pass real world nozzle position, direction, and inherited velocity without assuming bucket-local space.
 - The current solver is connected to the bucket in the Phase 4 scene but remains independent from the canvas.
 
 ## SPH Rendering
@@ -139,6 +141,7 @@ Current status:
 - The benchmark applies existing simulation profiles and coordinates reset/profile/motion controls.
 - Phase 4 implements `BucketSphFluidController`, `BucketSphNozzleEmitter`, `BucketSphMode`, and `BucketSphSubsystemAdapter`.
 - The Phase 4 integration keeps legacy paint available but disables it by default only in the Phase 4 scene.
+- Phase 4.2 makes `NozzleEmission` the default demo mode and treats `InternalAndEmission` as postponed until a two-domain or two-solver design is added.
 
 ## Painting
 
@@ -175,6 +178,7 @@ Current status:
 - Existing `SimulationStatsUI` remains in place.
 - Phase 3 adds `UI/Debug/FluidBoxBenchmarkUI.cs` for the independent SPH benchmark.
 - Phase 4 adds `UI/Debug/BucketSphDebugUI.cs` for bucket SPH mode/profile/emitter inspection.
+- Phase 4.2 adds keyboard controls and a more complete SPH readout for mode, profile, particle counts, render stride, memory, grid overflow, nozzle world position, and solver buffer state.
 
 ## Legacy
 

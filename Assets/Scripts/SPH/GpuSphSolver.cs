@@ -16,6 +16,7 @@ public class GpuSphSolver : MonoBehaviour
     public GpuSphSettings settingsTemplate;
     public FluidBoxController fluidBox;
     public GpuSphSimulationDomain simulationDomain = GpuSphSimulationDomain.FluidBox;
+    public Transform openWorldSimulationRoot;
     public BucketSphCollisionProvider bucketCollisionProvider;
     public GpuSphDebugStats debugStats;
     public bool initializeOnStart = true;
@@ -135,20 +136,7 @@ public class GpuSphSolver : MonoBehaviour
 
     public Matrix4x4 SimulationLocalToWorldMatrix
     {
-        get
-        {
-            if (simulationDomain == GpuSphSimulationDomain.FluidBox && fluidBox != null)
-            {
-                return fluidBox.LocalToWorldMatrix;
-            }
-
-            if (bucketCollisionProvider != null)
-            {
-                return bucketCollisionProvider.LocalToWorldMatrix;
-            }
-
-            return transform.localToWorldMatrix;
-        }
+        get { return GetSimulationLocalToWorldMatrix(); }
     }
 
     public Vector3 SimulationWorldCenter
@@ -159,6 +147,37 @@ public class GpuSphSolver : MonoBehaviour
     public string SimulationDomainLabel
     {
         get { return simulationDomain.ToString(); }
+    }
+
+    public Matrix4x4 GetSimulationLocalToWorldMatrix()
+    {
+        if (simulationDomain == GpuSphSimulationDomain.FluidBox && fluidBox != null)
+        {
+            return fluidBox.LocalToWorldMatrix;
+        }
+
+        if (simulationDomain == GpuSphSimulationDomain.BucketCylinder && bucketCollisionProvider != null)
+        {
+            return bucketCollisionProvider.LocalToWorldMatrix;
+        }
+
+        Transform root = openWorldSimulationRoot != null ? openWorldSimulationRoot : transform;
+        return root.localToWorldMatrix;
+    }
+
+    public Vector3 WorldToSimulationPosition(Vector3 worldPosition)
+    {
+        return GetSimulationLocalToWorldMatrix().inverse.MultiplyPoint3x4(worldPosition);
+    }
+
+    public Vector3 WorldToSimulationDirection(Vector3 worldDirection)
+    {
+        return GetSimulationLocalToWorldMatrix().inverse.MultiplyVector(worldDirection);
+    }
+
+    public Vector3 WorldToSimulationVelocity(Vector3 worldVelocity)
+    {
+        return WorldToSimulationDirection(worldVelocity);
     }
 
     public int Substeps
@@ -404,20 +423,21 @@ public class GpuSphSolver : MonoBehaviour
     private void ConfigureGrid()
     {
         GpuSphSettings settings = runtimeSettings;
+        Vector3 boundsSize = ResolveBoundsSize(settings);
         cellSize = Mathf.Max(settings.smoothingLength * settings.cellSizeMultiplier, 0.01f);
         gridDimensions = new Vector3Int(
-            Mathf.Max(1, Mathf.CeilToInt(settings.boundsSize.x / cellSize)),
-            Mathf.Max(1, Mathf.CeilToInt(settings.boundsSize.y / cellSize)),
-            Mathf.Max(1, Mathf.CeilToInt(settings.boundsSize.z / cellSize))
+            Mathf.Max(1, Mathf.CeilToInt(boundsSize.x / cellSize)),
+            Mathf.Max(1, Mathf.CeilToInt(boundsSize.y / cellSize)),
+            Mathf.Max(1, Mathf.CeilToInt(boundsSize.z / cellSize))
         );
         gridCellCount = gridDimensions.x * gridDimensions.y * gridDimensions.z;
 
-        float fillVolume = settings.boundsSize.x * 0.72f * settings.boundsSize.y * 0.62f * settings.boundsSize.z * 0.72f;
+        float fillVolume = boundsSize.x * 0.72f * boundsSize.y * 0.62f * boundsSize.z * 0.72f;
         float fitSpacing = Mathf.Pow(Mathf.Max(fillVolume / Mathf.Max(1, particleCount), 0.000001f), 1f / 3f);
         initialSpacing = Mathf.Clamp(fitSpacing * 0.96f, settings.particleRadius * 0.25f, settings.particleRadius * 2.05f);
         float spacing = Mathf.Max(initialSpacing, 0.001f);
-        int nx = Mathf.Max(1, Mathf.FloorToInt(settings.boundsSize.x * 0.72f / spacing));
-        int nz = Mathf.Max(1, Mathf.FloorToInt(settings.boundsSize.z * 0.72f / spacing));
+        int nx = Mathf.Max(1, Mathf.FloorToInt(boundsSize.x * 0.72f / spacing));
+        int nz = Mathf.Max(1, Mathf.FloorToInt(boundsSize.z * 0.72f / spacing));
         int ny = Mathf.Max(1, Mathf.CeilToInt(particleCount / (float)(nx * nz)));
         initGridDimensions = new Vector3(nx, ny, nz);
         particleDispatchGroupCount = GpuSphBufferUtility.DispatchGroups(particleCount, 256);
@@ -560,12 +580,12 @@ public class GpuSphSolver : MonoBehaviour
             return fluidBox.LocalGravity;
         }
 
-        if (bucketCollisionProvider != null)
+        if (simulationDomain == GpuSphSimulationDomain.BucketCylinder && bucketCollisionProvider != null)
         {
             return bucketCollisionProvider.LocalGravity;
         }
 
-        return settings.gravity;
+        return WorldToSimulationDirection(settings.gravity);
     }
 
     private Vector3 ResolveBoundsSize(GpuSphSettings settings)
@@ -575,7 +595,9 @@ public class GpuSphSolver : MonoBehaviour
             return fluidBox.BoundsSize;
         }
 
-        if (bucketCollisionProvider != null)
+        if ((simulationDomain == GpuSphSimulationDomain.BucketCylinder ||
+                simulationDomain == GpuSphSimulationDomain.OpenWorldWithBounds) &&
+            bucketCollisionProvider != null)
         {
             return bucketCollisionProvider.ExternalBoundsSize;
         }
@@ -586,6 +608,33 @@ public class GpuSphSolver : MonoBehaviour
     private void SetBucketShaderParameters(Vector3 boundsSize)
     {
         BucketSphCollisionProvider provider = bucketCollisionProvider;
+        Vector3 nozzleSimulationPosition = new Vector3(-0.14f, -1f, 0f);
+        Vector3 emitterDirection = Vector3.down;
+        Vector3 inheritedVelocity = Vector3.zero;
+
+        if (provider != null)
+        {
+            if (simulationDomain == GpuSphSimulationDomain.BucketCylinder)
+            {
+                nozzleSimulationPosition = provider.NozzleLocalPosition;
+                emitterDirection = provider.nozzlePoint != null
+                    ? provider.BucketRoot.InverseTransformDirection(-provider.nozzlePoint.up)
+                    : Vector3.down;
+                inheritedVelocity = provider.LocalBucketVelocity;
+            }
+            else
+            {
+                Vector3 worldNozzlePosition = provider.nozzlePoint != null
+                    ? provider.nozzlePoint.position
+                    : provider.BucketRoot.TransformPoint(provider.NozzleLocalPosition);
+                Vector3 worldDirection = provider.nozzlePoint != null ? -provider.nozzlePoint.up : Vector3.down;
+                nozzleSimulationPosition = WorldToSimulationPosition(worldNozzlePosition);
+                emitterDirection = WorldToSimulationDirection(worldDirection);
+                inheritedVelocity = provider.motionDataProvider != null
+                    ? WorldToSimulationVelocity(provider.motionDataProvider.WorldVelocity)
+                    : Vector3.zero;
+            }
+        }
 
         sphComputeShader.SetVector("_ExternalBoundsSize", boundsSize);
         sphComputeShader.SetVector("_BucketLocalCenter", provider != null ? provider.LocalCenter : Vector3.zero);
@@ -593,12 +642,12 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetFloat("_BucketHeight", provider != null ? provider.Height : 0.9f);
         sphComputeShader.SetFloat("_BucketBottomOffset", provider != null ? provider.BottomOffset : -0.45f);
         sphComputeShader.SetFloat("_BucketWallThickness", provider != null ? provider.WallThickness : 0.035f);
-        sphComputeShader.SetVector("_BucketNozzleLocalPosition", provider != null ? provider.NozzleLocalPosition : new Vector3(-0.14f, -1f, 0f));
+        sphComputeShader.SetVector("_BucketNozzleLocalPosition", nozzleSimulationPosition);
         sphComputeShader.SetFloat("_BucketNozzleRadius", provider != null ? provider.NozzleRadius : 0.04f);
         sphComputeShader.SetInt("_AllowNozzleExit", provider != null && provider.allowNozzleExit ? 1 : 0);
-        sphComputeShader.SetVector("_EmitterLocalPosition", provider != null ? provider.NozzleLocalPosition : new Vector3(-0.14f, -1f, 0f));
-        sphComputeShader.SetVector("_EmitterDirection", Vector3.down);
-        sphComputeShader.SetVector("_EmitterInheritedVelocity", provider != null ? provider.LocalBucketVelocity : Vector3.zero);
+        sphComputeShader.SetVector("_EmitterLocalPosition", nozzleSimulationPosition);
+        sphComputeShader.SetVector("_EmitterDirection", emitterDirection.sqrMagnitude > 0.000001f ? emitterDirection.normalized : Vector3.down);
+        sphComputeShader.SetVector("_EmitterInheritedVelocity", inheritedVelocity);
         sphComputeShader.SetFloat("_EmitterRadius", provider != null ? provider.NozzleRadius : 0.04f);
         sphComputeShader.SetFloat("_EmitterSpeed", 2.2f);
         sphComputeShader.SetFloat("_EmitterSpread", 0.35f);

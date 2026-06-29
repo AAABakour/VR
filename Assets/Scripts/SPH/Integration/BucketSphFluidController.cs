@@ -12,6 +12,7 @@ public class BucketSphFluidController : MonoBehaviour
 
     [Header("Mode")]
     public BucketSphMode startupMode = BucketSphMode.InternalBucketFluid;
+    public bool internalAndEmissionSupported = false;
     public bool initializeOnStart = true;
     public bool disableLegacyPaintOnStart = true;
     public PaintEmitter legacyPaintEmitter;
@@ -31,6 +32,7 @@ public class BucketSphFluidController : MonoBehaviour
 
     private BucketSphMode currentMode;
     private SimulationProfile activeProfile;
+    private bool warnedInternalAndEmissionUnsupported;
 
     public BucketSphMode CurrentMode
     {
@@ -137,6 +139,12 @@ public class BucketSphFluidController : MonoBehaviour
     public void SetMode(BucketSphMode mode, bool resetFluid)
     {
         ResolveReferences();
+        if (mode == BucketSphMode.InternalAndEmission && !internalAndEmissionSupported)
+        {
+            WarnInternalAndEmissionUnsupported();
+            mode = BucketSphMode.NozzleEmission;
+        }
+
         currentMode = mode;
         ConfigureSolverDomain();
         ConfigureEmitter();
@@ -206,8 +214,10 @@ public class BucketSphFluidController : MonoBehaviour
 
     public void CycleMode()
     {
-        int next = ((int)currentMode + 1) % 4;
-        SetMode((BucketSphMode)next, true);
+        BucketSphMode next = currentMode == BucketSphMode.InternalBucketFluid
+            ? BucketSphMode.NozzleEmission
+            : BucketSphMode.InternalBucketFluid;
+        SetMode(next, true);
     }
 
     public void SetInternalFluidMode()
@@ -222,7 +232,13 @@ public class BucketSphFluidController : MonoBehaviour
 
     public void SetInternalAndEmissionMode()
     {
-        SetMode(BucketSphMode.InternalAndEmission, true);
+        if (internalAndEmissionSupported)
+        {
+            SetMode(BucketSphMode.InternalAndEmission, true);
+            return;
+        }
+
+        WarnInternalAndEmissionUnsupported();
     }
 
     public void SetDebugStaticEmissionMode()
@@ -238,7 +254,7 @@ public class BucketSphFluidController : MonoBehaviour
         if (enableEmission)
         {
             BucketSphMode emissionMode = currentMode == BucketSphMode.InternalBucketFluid
-                ? BucketSphMode.InternalAndEmission
+                ? BucketSphMode.NozzleEmission
                 : currentMode;
             SetMode(emissionMode, true);
 
@@ -335,7 +351,7 @@ public class BucketSphFluidController : MonoBehaviour
 
         bool emitting =
             currentMode == BucketSphMode.NozzleEmission ||
-            currentMode == BucketSphMode.InternalAndEmission ||
+            (currentMode == BucketSphMode.InternalAndEmission && internalAndEmissionSupported) ||
             currentMode == BucketSphMode.DebugStaticEmission;
 
         nozzleEmitter.emitOnUpdate = emitting;
@@ -348,5 +364,19 @@ public class BucketSphFluidController : MonoBehaviour
         {
             collisionProvider.allowNozzleExit = nozzleEmitter.allowNozzleExit;
         }
+    }
+
+    private void WarnInternalAndEmissionUnsupported()
+    {
+        if (warnedInternalAndEmissionUnsupported)
+        {
+            return;
+        }
+
+        warnedInternalAndEmissionUnsupported = true;
+        Debug.LogWarning(
+            "[BucketSphFluidController] InternalAndEmission is postponed for Phase 4.2 because correct simultaneous bucket-local and world-space SPH needs separate coordinate domains or two solvers. Use InternalBucketFluid or NozzleEmission.",
+            this
+        );
     }
 }
