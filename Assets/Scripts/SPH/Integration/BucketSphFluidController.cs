@@ -7,6 +7,8 @@ public class BucketSphFluidController : MonoBehaviour
     public GpuSphParticleRenderer particleRenderer;
     public BucketSphCollisionProvider collisionProvider;
     public BucketSphNozzleEmitter nozzleEmitter;
+    public BucketPaintReservoir reservoir;
+    public BucketInternalFluidVisual internalFluidVisual;
     public BucketRigController bucketRigController;
     public BucketMotionDataProvider bucketMotionDataProvider;
 
@@ -87,6 +89,24 @@ public class BucketSphFluidController : MonoBehaviour
             nozzleEmitter = Object.FindFirstObjectByType<BucketSphNozzleEmitter>();
         }
 
+        if (reservoir == null)
+        {
+            reservoir = GetComponent<BucketPaintReservoir>();
+            if (reservoir == null)
+            {
+                reservoir = Object.FindFirstObjectByType<BucketPaintReservoir>();
+            }
+        }
+
+        if (internalFluidVisual == null)
+        {
+            internalFluidVisual = GetComponent<BucketInternalFluidVisual>();
+            if (internalFluidVisual == null)
+            {
+                internalFluidVisual = Object.FindFirstObjectByType<BucketInternalFluidVisual>();
+            }
+        }
+
         if (bucketRigController == null)
         {
             bucketRigController = Object.FindFirstObjectByType<BucketRigController>();
@@ -119,9 +139,21 @@ public class BucketSphFluidController : MonoBehaviour
             nozzleEmitter.solver = solver;
             nozzleEmitter.collisionProvider = collisionProvider;
             nozzleEmitter.bucketMotionDataProvider = bucketMotionDataProvider;
+            nozzleEmitter.reservoir = reservoir;
             if (collisionProvider != null)
             {
                 nozzleEmitter.nozzlePoint = collisionProvider.nozzlePoint;
+            }
+        }
+
+        if (internalFluidVisual != null)
+        {
+            internalFluidVisual.reservoir = reservoir;
+            internalFluidVisual.motionDataProvider = bucketMotionDataProvider;
+            if (collisionProvider != null)
+            {
+                internalFluidVisual.bucketRoot = collisionProvider.BucketRoot;
+                internalFluidVisual.bucketCollisionProxy = collisionProvider.bucketCollisionProxy;
             }
         }
 
@@ -149,10 +181,29 @@ public class BucketSphFluidController : MonoBehaviour
         currentMode = mode;
         ConfigureSolverDomain();
         ConfigureEmitter();
+        ConfigureReservoirVisual();
 
         if (resetFluid && solver != null)
         {
             solver.Initialize();
+        }
+
+        if (resetFluid)
+        {
+            if (nozzleEmitter != null)
+            {
+                nozzleEmitter.ResetEmitter();
+            }
+
+            if (reservoir != null)
+            {
+                reservoir.ResetReservoir();
+            }
+
+            if (internalFluidVisual != null)
+            {
+                internalFluidVisual.ResetVisual();
+            }
         }
     }
 
@@ -167,6 +218,7 @@ public class BucketSphFluidController : MonoBehaviour
         activeProfile = profile;
         ConfigureSolverDomain();
         ConfigureEmitter();
+        ConfigureReservoirVisual();
 
         if (solver != null)
         {
@@ -176,15 +228,28 @@ public class BucketSphFluidController : MonoBehaviour
 
     public void ResetBucketSph()
     {
+        if (solver != null)
+        {
+            solver.Initialize();
+        }
+
         if (nozzleEmitter != null)
         {
             nozzleEmitter.ResetEmitter();
         }
 
-        if (solver != null)
+        if (reservoir != null)
         {
-            solver.Initialize();
+            reservoir.ResetReservoir();
         }
+
+        if (internalFluidVisual != null)
+        {
+            internalFluidVisual.ResetVisual();
+        }
+
+        ConfigureEmitter();
+        ConfigureReservoirVisual();
     }
 
     public void SetPaused(bool paused)
@@ -257,7 +322,14 @@ public class BucketSphFluidController : MonoBehaviour
             BucketSphMode emissionMode = currentMode == BucketSphMode.InternalBucketFluid
                 ? BucketSphMode.NozzleEmission
                 : currentMode;
-            SetMode(emissionMode, true);
+            if (emissionMode != currentMode)
+            {
+                SetMode(emissionMode, true);
+            }
+            else
+            {
+                ConfigureEmitter();
+            }
 
             if (nozzleEmitter != null)
             {
@@ -272,12 +344,28 @@ public class BucketSphFluidController : MonoBehaviour
             nozzleEmitter.emitOnUpdate = false;
             nozzleEmitter.ResetEmitter();
         }
+    }
 
-        if (currentMode == BucketSphMode.NozzleEmission ||
-            currentMode == BucketSphMode.InternalAndEmission ||
-            currentMode == BucketSphMode.DebugStaticEmission)
+    public void AddPaint(float amount)
+    {
+        ResolveReferences();
+        if (reservoir != null)
         {
-            SetMode(BucketSphMode.InternalBucketFluid, true);
+            reservoir.AddPaint(amount);
+        }
+
+        if (internalFluidVisual != null)
+        {
+            internalFluidVisual.ResetVisual();
+        }
+    }
+
+    public void ToggleInfiniteDebugEmission()
+    {
+        ResolveReferences();
+        if (reservoir != null)
+        {
+            reservoir.allowInfiniteDebugEmission = !reservoir.allowInfiniteDebugEmission;
         }
     }
 
@@ -370,11 +458,25 @@ public class BucketSphFluidController : MonoBehaviour
         nozzleEmitter.inheritedBucketVelocity = currentMode == BucketSphMode.DebugStaticEmission
             ? 0f
             : defaultInheritedBucketVelocity;
+        nozzleEmitter.reservoir = reservoir;
 
         if (collisionProvider != null)
         {
             collisionProvider.allowNozzleExit = nozzleEmitter.allowNozzleExit;
         }
+    }
+
+    private void ConfigureReservoirVisual()
+    {
+        if (internalFluidVisual == null)
+        {
+            return;
+        }
+
+        internalFluidVisual.enabled =
+            currentMode == BucketSphMode.NozzleEmission ||
+            currentMode == BucketSphMode.InternalBucketFluid ||
+            currentMode == BucketSphMode.InternalAndEmission;
     }
 
     private void WarnInternalAndEmissionUnsupported()

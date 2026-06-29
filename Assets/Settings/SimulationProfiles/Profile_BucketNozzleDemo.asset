@@ -20,4 +20,4 @@ MonoBehaviour:
   enableGpuSph: 1
   enableRopeRig: 1
   enableDebugVisuals: 1
-  description: Phase 4.3 demo profile for a readable world-space GPU SPH nozzle stream. Keeps particle count modest, render stride at 1, and avoids the dense cloud look before Phase 5 canvas impacts exist.
+  description: Phase 4.4 finite bucket-nozzle demo profile. Keeps particle count modest, render stride at 1, and pairs with BucketPaintReservoir so the visible nozzle stream drains a finite paint amount before Phase 5 canvas impacts exist.

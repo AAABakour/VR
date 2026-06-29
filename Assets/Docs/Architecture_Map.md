@@ -145,6 +145,9 @@ Current status:
 - The Phase 4 integration keeps legacy paint available but disables it by default only in the Phase 4 scene.
 - Phase 4.2 makes `NozzleEmission` the default demo mode and treats `InternalAndEmission` as postponed until a two-domain or two-solver design is added.
 - Phase 4.3 adds `Profile_BucketNozzleDemo` as the default readable nozzle-stream profile.
+- Phase 4.4 adds `BucketPaintReservoir` so nozzle emission consumes a finite amount of bucket paint instead of running forever.
+- Phase 4.4 adds `BucketInternalFluidVisual`, a transparent reservoir surface that follows bucket motion and maps height to reservoir fill percent. This is a visual fill indicator, not SPH surface reconstruction.
+- Finite nozzle drain flow is controlled by reservoir availability, paint amount per particle, drain multiplier, and a fill-percent flow factor. Empty reservoirs stop new GPU particle activation while already active particles continue normally.
 
 ## Painting
 
@@ -183,6 +186,7 @@ Current status:
 - Phase 4 adds `UI/Debug/BucketSphDebugUI.cs` for bucket SPH mode/profile/emitter inspection.
 - Phase 4.2 adds keyboard controls and a more complete SPH readout for mode, profile, particle counts, render stride, memory, grid overflow, nozzle world position, and solver buffer state.
 - Phase 4.3 adds active/inactive/emitted particle counters and lifetime/frame labels to the SPH debug readout.
+- Phase 4.4 adds finite paint readouts: remaining amount, fill percent, requested versus actual emission, last consumed amount, and reservoir state including `EMPTY` and explicit `INFINITE DEBUG`.
 
 ## Legacy
 

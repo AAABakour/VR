@@ -6,6 +6,7 @@ public class BucketSphNozzleEmitter : MonoBehaviour
     public GpuSphSolver solver;
     public BucketSphCollisionProvider collisionProvider;
     public BucketMotionDataProvider bucketMotionDataProvider;
+    public BucketPaintReservoir reservoir;
     public Transform nozzlePoint;
 
     [Header("Emission")]
@@ -28,10 +29,34 @@ public class BucketSphNozzleEmitter : MonoBehaviour
 
     private float emissionAccumulator;
     private int emittedThisFrame;
+    private bool emissionBlockedByEmptyReservoir;
+    private int requestedThisFrame;
+    private int actualEmittedThisFrame;
+    private float lastConsumedPaintAmount;
 
     public int EmittedThisFrame
     {
         get { return emittedThisFrame; }
+    }
+
+    public bool IsEmissionBlockedByEmptyReservoir
+    {
+        get { return emissionBlockedByEmptyReservoir; }
+    }
+
+    public int RequestedThisFrame
+    {
+        get { return requestedThisFrame; }
+    }
+
+    public int ActualEmittedThisFrame
+    {
+        get { return actualEmittedThisFrame; }
+    }
+
+    public float LastConsumedPaintAmount
+    {
+        get { return lastConsumedPaintAmount; }
     }
 
     public Vector3 NozzleWorldPosition
@@ -60,13 +85,20 @@ public class BucketSphNozzleEmitter : MonoBehaviour
     private void Update()
     {
         emittedThisFrame = 0;
+        requestedThisFrame = 0;
+        actualEmittedThisFrame = 0;
+        lastConsumedPaintAmount = 0f;
+        emissionBlockedByEmptyReservoir = false;
+
         if (!emitOnUpdate || solver == null || Time.deltaTime <= 0f)
         {
             return;
         }
 
-        emissionAccumulator += particlesPerSecond * Time.deltaTime;
+        float effectiveRate = particlesPerSecond * GetReservoirFlowFactor();
+        emissionAccumulator += effectiveRate * Time.deltaTime;
         int emitCount = Mathf.Min(Mathf.FloorToInt(emissionAccumulator), Mathf.Max(1, maxParticlesPerFrame));
+        requestedThisFrame = emitCount;
 
         if (emitCount <= 0)
         {
@@ -95,6 +127,11 @@ public class BucketSphNozzleEmitter : MonoBehaviour
             bucketMotionDataProvider = Object.FindFirstObjectByType<BucketMotionDataProvider>();
         }
 
+        if (reservoir == null)
+        {
+            reservoir = Object.FindFirstObjectByType<BucketPaintReservoir>();
+        }
+
         if (nozzlePoint == null && collisionProvider != null)
         {
             nozzlePoint = collisionProvider.nozzlePoint;
@@ -105,6 +142,19 @@ public class BucketSphNozzleEmitter : MonoBehaviour
     {
         if (solver == null)
         {
+            return;
+        }
+
+        requestedThisFrame = emitCount;
+        int actualEmitCount = reservoir != null
+            ? reservoir.ClampEmissionToAvailablePaint(emitCount)
+            : emitCount;
+
+        if (actualEmitCount <= 0)
+        {
+            emissionBlockedByEmptyReservoir = reservoir != null && reservoir.IsEmpty;
+            emittedThisFrame = 0;
+            actualEmittedThisFrame = 0;
             return;
         }
 
@@ -122,7 +172,7 @@ public class BucketSphNozzleEmitter : MonoBehaviour
             simulationPosition,
             simulationDirection,
             simulationVelocity,
-            emitCount,
+            actualEmitCount,
             nozzleRadius,
             emissionSpeed,
             velocitySpread,
@@ -130,12 +180,43 @@ public class BucketSphNozzleEmitter : MonoBehaviour
             allowNozzleExit
         );
 
-        emittedThisFrame = emitCount;
+        lastConsumedPaintAmount = reservoir != null
+            ? reservoir.ConsumeForParticles(actualEmitCount)
+            : 0f;
+        emittedThisFrame = actualEmitCount;
+        actualEmittedThisFrame = actualEmitCount;
     }
 
     public void ResetEmitter()
     {
         emissionAccumulator = 0f;
         emittedThisFrame = 0;
+        requestedThisFrame = 0;
+        actualEmittedThisFrame = 0;
+        lastConsumedPaintAmount = 0f;
+        emissionBlockedByEmptyReservoir = false;
+    }
+
+    private float GetReservoirFlowFactor()
+    {
+        if (reservoir == null)
+        {
+            return 1f;
+        }
+
+        if (reservoir.allowInfiniteDebugEmission)
+        {
+            return Mathf.Max(0f, reservoir.drainRateMultiplier);
+        }
+
+        if (reservoir.IsEmpty)
+        {
+            emissionBlockedByEmptyReservoir = true;
+            emissionAccumulator = 0f;
+            return 0f;
+        }
+
+        float fillFactor = Mathf.Sqrt(Mathf.Max(reservoir.FillPercent, 0.02f));
+        return fillFactor * reservoir.drainRateMultiplier;
     }
 }

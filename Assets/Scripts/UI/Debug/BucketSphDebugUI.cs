@@ -7,6 +7,7 @@ public class BucketSphDebugUI : MonoBehaviour
     public BucketSphFluidController controller;
     public GpuSphDebugStats stats;
     public BucketSphNozzleEmitter nozzleEmitter;
+    public BucketPaintReservoir reservoir;
     public BucketMotionDataProvider motionDataProvider;
     public bool autoCreateUi = true;
     public bool enableKeyboardShortcuts = true;
@@ -34,7 +35,7 @@ public class BucketSphDebugUI : MonoBehaviour
         }
 
         builder.Length = 0;
-        builder.AppendLine("Bucket SPH Phase 4.3");
+        builder.AppendLine("Bucket SPH Phase 4.4");
 
         if (controller != null)
         {
@@ -57,7 +58,7 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.Append(stats.activeParticleCount);
             builder.Append("  Inactive: ");
             builder.AppendLine(stats.inactiveParticleCount.ToString());
-            builder.Append("Rendered slots: ");
+            builder.Append("Rendered particles: ");
             builder.AppendLine(stats.renderedParticleCount.ToString());
             builder.Append("Total emitted: ");
             builder.AppendLine(stats.totalEmittedParticleCount.ToString());
@@ -96,13 +97,35 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.Append(" @ ");
             builder.Append(nozzleEmitter.particlesPerSecond.ToString("0"));
             builder.AppendLine("/s");
-            builder.Append("Last burst: ");
-            builder.AppendLine(nozzleEmitter.EmittedThisFrame.ToString());
+            builder.Append("Requested/frame: ");
+            builder.Append(nozzleEmitter.RequestedThisFrame);
+            builder.Append("  Actual/frame: ");
+            builder.AppendLine(nozzleEmitter.ActualEmittedThisFrame.ToString());
+            builder.Append("Last consumed: ");
+            builder.AppendLine(nozzleEmitter.LastConsumedPaintAmount.ToString("0.0000"));
             builder.Append("Particle lifetime: ");
             builder.Append(nozzleEmitter.particleLifetime.ToString("0.0"));
             builder.AppendLine("s");
             builder.Append("Nozzle world: ");
             builder.AppendLine(nozzleEmitter.NozzleWorldPosition.ToString("F2"));
+
+            if (nozzleEmitter.IsEmissionBlockedByEmptyReservoir)
+            {
+                builder.AppendLine("Emission blocked: Reservoir Empty");
+            }
+        }
+
+        if (reservoir != null)
+        {
+            builder.Append("Paint remaining: ");
+            builder.Append(reservoir.RemainingPaintAmount.ToString("0.000"));
+            builder.Append(" / ");
+            builder.Append(reservoir.maxPaintAmount.ToString("0.000"));
+            builder.Append("  Fill: ");
+            builder.Append((reservoir.FillPercent * 100f).ToString("0"));
+            builder.AppendLine("%");
+            builder.Append("Reservoir: ");
+            builder.AppendLine(GetReservoirStatus());
         }
 
         if (motionDataProvider != null)
@@ -111,7 +134,8 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine(motionDataProvider.WorldVelocity.magnitude.ToString("0.00"));
         }
 
-        builder.AppendLine("Controls: R Reset | 1 Internal | 2 Nozzle | 3 Mixed future | E Emit");
+        builder.AppendLine("Controls: R Reset/refill | E Emit | P Add paint | I DEBUG infinite");
+        builder.AppendLine("Modes: 1 Internal | 2 Nozzle | 3 Mixed future");
         builder.AppendLine("Profiles: F1 Bucket Demo | F2 Presentation | F3 Professor 1M | F4 VR Safe");
 
         readout.text = builder.ToString();
@@ -147,6 +171,16 @@ public class BucketSphDebugUI : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.E))
         {
             ToggleEmission();
+        }
+
+        if (Input.GetKeyDown(KeyCode.P))
+        {
+            AddPaint();
+        }
+
+        if (Input.GetKeyDown(KeyCode.I))
+        {
+            ToggleInfiniteDebugEmission();
         }
 
         if (Input.GetKeyDown(KeyCode.F1))
@@ -186,6 +220,11 @@ public class BucketSphDebugUI : MonoBehaviour
         if (nozzleEmitter == null)
         {
             nozzleEmitter = Object.FindFirstObjectByType<BucketSphNozzleEmitter>();
+        }
+
+        if (reservoir == null)
+        {
+            reservoir = Object.FindFirstObjectByType<BucketPaintReservoir>();
         }
 
         if (motionDataProvider == null)
@@ -247,6 +286,22 @@ public class BucketSphDebugUI : MonoBehaviour
         if (controller != null)
         {
             controller.ToggleEmission();
+        }
+    }
+
+    public void AddPaint()
+    {
+        if (controller != null)
+        {
+            controller.AddPaint(0.5f);
+        }
+    }
+
+    public void ToggleInfiniteDebugEmission()
+    {
+        if (controller != null)
+        {
+            controller.ToggleInfiniteDebugEmission();
         }
     }
 
@@ -317,6 +372,36 @@ public class BucketSphDebugUI : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = new Vector2(560f, 430f);
+        rect.sizeDelta = new Vector2(600f, 500f);
+    }
+
+    private string GetReservoirStatus()
+    {
+        if (reservoir == null)
+        {
+            return "MISSING";
+        }
+
+        if (reservoir.allowInfiniteDebugEmission)
+        {
+            return "INFINITE DEBUG";
+        }
+
+        if (reservoir.IsEmpty)
+        {
+            return "EMPTY";
+        }
+
+        if (reservoir.FillPercent >= 0.98f)
+        {
+            return "FULL";
+        }
+
+        if (reservoir.FillPercent <= 0.18f)
+        {
+            return "LOW";
+        }
+
+        return "DRAINING";
     }
 }

@@ -4866,6 +4866,8 @@ GameObject:
   - component: {fileID: 4200000005}
   - component: {fileID: 4200000006}
   - component: {fileID: 4200000007}
+  - component: {fileID: 4200000008}
+  - component: {fileID: 4200000009}
   m_Layer: 0
   m_Name: SPH_BucketFluidRoot
   m_TagString: Untagged
@@ -4927,7 +4929,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GpuSphParticleRenderer
   solver: {fileID: 4200000002}
   fluidBox: {fileID: 0}
-  particleMaterial: {fileID: 2100000, guid: 0d2ef2dc083d411a958d0d42950ce17e, type: 2}
+  particleMaterial: {fileID: 2100000, guid: e725ed3c05224ecf9117ff6b960fb81d, type: 2}
   renderCamera: {fileID: 330585545}
   particleSize: 0.018
   particleColor: {r: 1, g: 0.26, b: 0.07, a: 0.9}
@@ -4980,6 +4982,8 @@ MonoBehaviour:
   particleRenderer: {fileID: 4200000003}
   collisionProvider: {fileID: 4200000005}
   nozzleEmitter: {fileID: 4200000102}
+  reservoir: {fileID: 4200000008}
+  internalFluidVisual: {fileID: 4200000009}
   bucketRigController: {fileID: 4100000002}
   bucketMotionDataProvider: {fileID: 4100000003}
   startupMode: 1
@@ -5009,6 +5013,56 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::BucketSphSubsystemAdapter
   controller: {fileID: 4200000006}
+--- !u!114 &4200000008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4200000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 75b2160e5c184c79bf4a28398ef94e95, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BucketPaintReservoir
+  maxPaintAmount: 5
+  initialPaintAmount: 5
+  remainingPaintAmount: 5
+  fillPercent: 1
+  isEmpty: 0
+  paintAmountPerParticle: 0.001
+  drainRateMultiplier: 1
+  minEmissionThreshold: 0.001
+  allowInfiniteDebugEmission: 0
+  resetOnPlay: 1
+--- !u!114 &4200000009
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4200000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fdbda9003b640da8492f122c9b03f6a, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BucketInternalFluidVisual
+  bucketRoot: {fileID: 239325981}
+  reservoir: {fileID: 4200000008}
+  motionDataProvider: {fileID: 4100000003}
+  bucketCollisionProxy: {fileID: 4100000004}
+  minLocalY: -0.37
+  maxLocalY: -0.035
+  radius: 0.36
+  color: {r: 1, g: 0.24, b: 0.04, a: 0.72}
+  alpha: 0.72
+  emptyAlpha: 0.02
+  material: {fileID: 2100000, guid: 7b25a2de81e643659a9edbe8bd5fb212, type: 2}
+  segments: 48
+  sloshStrength: 0.18
+  sloshDamping: 0.12
+  maxSloshAngle: 9
+  showDebugGizmos: 1
 --- !u!1 &4200000100
 GameObject:
   m_ObjectHideFlags: 0
@@ -5056,8 +5110,9 @@ MonoBehaviour:
   solver: {fileID: 4200000002}
   collisionProvider: {fileID: 4200000005}
   bucketMotionDataProvider: {fileID: 4100000003}
+  reservoir: {fileID: 4200000008}
   nozzlePoint: {fileID: 823100762}
-  emitOnUpdate: 0
+  emitOnUpdate: 1
   particlesPerSecond: 850
   maxParticlesPerFrame: 256
   nozzleRadius: 0.024
@@ -5113,6 +5168,7 @@ MonoBehaviour:
   controller: {fileID: 4200000006}
   stats: {fileID: 4200000004}
   nozzleEmitter: {fileID: 4200000102}
+  reservoir: {fileID: 4200000008}
   motionDataProvider: {fileID: 4100000003}
   autoCreateUi: 1
   enableKeyboardShortcuts: 1

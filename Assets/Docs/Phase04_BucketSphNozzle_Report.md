@@ -205,6 +205,71 @@ Testing:
 
 Canvas impacts and canvas painting are still Phase 5 work.
 
+## Phase 4.4 Finite Paint Reservoir and Internal Fluid Visual
+
+Phase 4.4 was needed because Phase 4.3 produced a readable nozzle stream, but the bucket still looked empty and the nozzle behaved like an infinite emitter. That made the demo visually misleading: paint appeared from the nozzle without any finite source inside the bucket.
+
+`BucketPaintReservoir` adds a small, independent paint amount model for the bucket SPH demo:
+
+- `maxPaintAmount` and `initialPaintAmount` define the refillable bucket capacity.
+- `remainingPaintAmount` is reduced only when actual GPU particles are emitted.
+- `paintAmountPerParticle` maps emitted particle count to consumed reservoir amount.
+- `fillPercent` reports the visible fill level.
+- `allowInfiniteDebugEmission` exists only as an explicit debug override and is off by default.
+
+Finite emission now works through `BucketSphNozzleEmitter`:
+
+- The emitter calculates its requested particles for the frame from emission rate, `drainRateMultiplier`, and a fill-percent flow factor.
+- The reservoir clamps that request to the paint still available.
+- Only the actual emitted particle count is sent to `GpuSphSolver.EmitFromNozzle`.
+- Only the actual emitted particle count consumes paint.
+- When the reservoir is empty, no new particles are activated. Already emitted particles continue until lifetime or bounds deactivate them.
+
+The default drain uses `Profile_BucketNozzleDemo`, `NozzleEmission`, 20,000 allocated particles, approximately 650-850 particles per second, 0.001 paint amount per particle, and a 5-unit reservoir. The square-root fill factor slows the stream near empty, giving a visible finite drain rather than an abrupt cutoff.
+
+`BucketInternalFluidVisual` adds the visible paint inside the bucket. It is intentionally a reservoir visualization, not true SPH surface reconstruction:
+
+- It renders one simple transparent circular surface inside the bucket.
+- Its height follows `BucketPaintReservoir.FillPercent`.
+- It follows the bucket transform and uses bucket motion to add a small clamped slosh/tilt visual.
+- It does not create particle GameObjects.
+- It does not affect SPH physics or canvas painting.
+
+The Phase 4 scene now uses paint-colored materials:
+
+- `MAT_BucketInternalPaint` for the internal reservoir surface.
+- `MAT_BucketNozzlePaintParticle` for the GPU nozzle particles.
+
+`BucketSphDebugUI` now identifies the demo as `Bucket SPH Phase 4.4` and shows:
+
+- mode and profile
+- simulated, active, rendered, and render-stride counts
+- requested and actual emitted particles per frame
+- remaining paint amount and fill percentage
+- reservoir status: `FULL`, `DRAINING`, `LOW`, `EMPTY`, or `INFINITE DEBUG`
+- last consumed paint amount
+- nozzle world position, bucket velocity, grid overflow, and GPU memory
+
+Controls:
+
+- `R`: reset SPH and refill the reservoir.
+- `E`: toggle emission without refilling.
+- `P`: add a small amount of paint for debug inspection.
+- `I`: toggle explicit debug infinite emission. This is off by default and labeled as `INFINITE DEBUG`.
+- `1`: internal bucket fluid mode.
+- `2`: finite nozzle emission mode.
+- `F1`: bucket nozzle demo profile.
+- `F2`: presentation profile.
+- `F3`: Professor 1M profile.
+- `F4`: VR safe profile.
+
+Known limitations:
+
+- The internal surface is a visual reservoir surface, not SPH surface extraction.
+- `InternalAndEmission` remains postponed until a two-domain or two-solver design is implemented.
+- The finite reservoir is a demo control model and not a full volume-conserving SPH source.
+- Canvas painting, splats, impact extraction, and GPU-to-canvas bridge work remain Phase 5.
+
 ## Phase 5 Focus
 
 Phase 5 should add sparse GPU impact extraction and a controlled bridge from SPH impacts to canvas painting. That work should avoid full particle readback, avoid CPU particle loops, and keep legacy painting available until visual parity is proven.
