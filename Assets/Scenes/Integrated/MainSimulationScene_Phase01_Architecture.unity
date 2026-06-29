@@ -1732,6 +1732,7 @@ GameObject:
   - component: {fileID: 749221998}
   - component: {fileID: 749221999}
   - component: {fileID: 749222000}
+  - component: {fileID: 749222001}
   m_Layer: 0
   m_Name: CanvasBoard
   m_TagString: Untagged
@@ -1966,6 +1967,22 @@ MonoBehaviour:
   transfersLastStep: 0
   totalMovedThickness: 0
   movedThicknessLastStep: 0
+--- !u!114 &749222001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 749221992}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 399b61a9d5394eeaaa2c58df6da27672, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LegacySystemTag
+  systemName: CanvasPainter
+  reasonKept: Legacy canvas painting remains the active projection surface until the future painting bridge lands.
+  plannedReplacement: Painting bridge and later canvas upgrade
+  targetPhase: Phase 6
 --- !u!1 &823100761
 GameObject:
   m_ObjectHideFlags: 0
@@ -1977,6 +1994,7 @@ GameObject:
   - component: {fileID: 823100762}
   - component: {fileID: 823100763}
   - component: {fileID: 823100764}
+  - component: {fileID: 823100765}
   m_Layer: 0
   m_Name: PaintNozzle
   m_TagString: Untagged
@@ -2079,6 +2097,22 @@ MonoBehaviour:
   impactRadiusMultiplier: 1.3
   minImpactRadius: 0.015
   maxImpactRadius: 0.09
+--- !u!114 &823100765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 823100761}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 399b61a9d5394eeaaa2c58df6da27672, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LegacySystemTag
+  systemName: PaintNozzle
+  reasonKept: Legacy paint emitter and CPU particle simulator remain in place until the GPU paint pipeline is ready.
+  plannedReplacement: GPU SPH emission and external paint bridge
+  targetPhase: Phase 4
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -4332,6 +4366,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2117975970}
   - component: {fileID: 2117975971}
+  - component: {fileID: 2117975972}
   m_Layer: 0
   m_Name: PivotPoint
   m_TagString: Untagged
@@ -4389,10 +4424,200 @@ MonoBehaviour:
   torsionStrength: 18
   torsionDamping: 1.8
   ropeThickness: 0.03
+--- !u!114 &2117975972
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2117975969}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 399b61a9d5394eeaaa2c58df6da27672, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LegacySystemTag
+  systemName: PendulumController
+  reasonKept: Legacy pendulum swing remains the current bucket motion until the rope and bucket rigs are introduced.
+  plannedReplacement: Rope/Chain Rig and Bucket Rig
+  targetPhase: Phase 2
+--- !u!1 &4000000000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4000000001}
+  - component: {fileID: 4000000002}
+  - component: {fileID: 4000000003}
+  m_Layer: 0
+  m_Name: ArchitectureRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4000000001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 4000000011}
+  - {fileID: 4000000021}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4000000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63deb89116be4d7a88085159edcb85dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SimulationLifecycleManager
+  activeProfile: {fileID: 11400000, guid: a54b3b165b6a49aeba6c2dfb3130a181, type: 2}
+  applyProfileOnStart: 1
+  discoverSubsystemsInChildren: 1
+  discoverSubsystemsInScene: 0
+  explicitSubsystemBehaviours: []
+  isPaused: 0
+--- !u!114 &4000000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 265541e95d634db19b9327b3043a5aeb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SceneReferenceValidator
+  validateOnStart: 1
+  autoResolveMissingReferences: 1
+  pivotPoint: {fileID: 2117975969}
+  bucket: {fileID: 239325978}
+  rope: {fileID: 956846883}
+  paintNozzle: {fileID: 823100761}
+  canvasBoard: {fileID: 749221992}
+  mainUI: {fileID: 1736753277}
+  eventSystem: {fileID: 1989864437}
+  simulationManager: {fileID: 361705940}
+  paintEmitter: {fileID: 823100763}
+  paintParticleSimulator: {fileID: 823100764}
+  canvasPainter: {fileID: 749221996}
+  pendulumController: {fileID: 2117975971}
+--- !u!1 &4000000010
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4000000011}
+  - component: {fileID: 4000000012}
+  m_Layer: 0
+  m_Name: LegacyPendulumSubsystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4000000011
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000010}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4000000001}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4000000012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ca7dbe1619b40a4b637bed06fdb08cb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LegacyPendulumAdapter
+  pendulumController: {fileID: 2117975971}
+  autoFindReference: 0
+--- !u!1 &4000000020
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4000000021}
+  - component: {fileID: 4000000022}
+  m_Layer: 0
+  m_Name: LegacyPaintSubsystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4000000021
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000020}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4000000001}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4000000022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000020}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 94ee33393adb4ebf98265a25446ff95b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LegacyPaintSystemAdapter
+  paintEmitter: {fileID: 823100763}
+  particleSimulator: {fileID: 823100764}
+  canvasPainter: {fileID: 749221996}
+  autoFindReferences: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 4000000001}
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}
