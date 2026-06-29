@@ -30,6 +30,8 @@ public class SceneReferenceValidator : MonoBehaviour
     public BucketHandleRig bucketHandleRig;
     public BucketMotionDataProvider bucketMotionDataProvider;
     public BucketCollisionProxy bucketCollisionProxy;
+    public RopeRigSubsystemAdapter ropeRigSubsystemAdapter;
+    public BucketRigSubsystemAdapter bucketRigSubsystemAdapter;
 
     private void Start()
     {
@@ -170,6 +172,16 @@ public class SceneReferenceValidator : MonoBehaviour
         {
             bucketCollisionProxy = Object.FindFirstObjectByType<BucketCollisionProxy>();
         }
+
+        if (ropeRigSubsystemAdapter == null)
+        {
+            ropeRigSubsystemAdapter = Object.FindFirstObjectByType<RopeRigSubsystemAdapter>();
+        }
+
+        if (bucketRigSubsystemAdapter == null)
+        {
+            bucketRigSubsystemAdapter = Object.FindFirstObjectByType<BucketRigSubsystemAdapter>();
+        }
     }
 
     private void ValidatePendulumReferences(List<string> warnings)
@@ -246,6 +258,19 @@ public class SceneReferenceValidator : MonoBehaviour
         if (bucketCollisionProxy != null)
         {
             RequireReference(warnings, bucketCollisionProxy.bucketRoot, "BucketCollisionProxy.bucketRoot");
+        }
+
+        if (ropeRigSubsystemAdapter != null)
+        {
+            RequireReference(warnings, ropeRigSubsystemAdapter.ropeRigController, "RopeRigSubsystemAdapter.ropeRigController");
+        }
+
+        if (bucketRigSubsystemAdapter != null)
+        {
+            RequireReference(warnings, bucketRigSubsystemAdapter.bucketRigController, "BucketRigSubsystemAdapter.bucketRigController");
+            RequireReference(warnings, bucketRigSubsystemAdapter.bucketHandleRig, "BucketRigSubsystemAdapter.bucketHandleRig");
+            RequireReference(warnings, bucketRigSubsystemAdapter.motionDataProvider, "BucketRigSubsystemAdapter.motionDataProvider");
+            RequireReference(warnings, bucketRigSubsystemAdapter.collisionProxy, "BucketRigSubsystemAdapter.collisionProxy");
         }
     }
 

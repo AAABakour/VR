@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f8fdff6e6ff44589d51a53ad0c21b43, type: 3}
+  m_Name: GpuSphSettings_FluidBox
+  m_EditorClassIdentifier:
+  modeLabel: Debug
+  particleCount: 50000
+  maxParticleCount: 1000000
+  particleRadius: 0.025
+  smoothingLength: 0.12
+  particleMass: 0.02
+  restDensity: 1000
+  stiffness: 250
+  viscosity: 0.08
+  gravity: {x: 0, y: -9.81, z: 0}
+  damping: 0.01
+  timestep: 0.004
+  substeps: 2
+  maxVelocity: 8
+  boundsSize: {x: 4, y: 2, z: 2}
+  collisionDamping: 0.45
+  tangentDamping: 0.08
+  wallOffset: 0.035
+  maxParticlesPerCell: 128
+  cellSizeMultiplier: 1
+  renderStride: 1

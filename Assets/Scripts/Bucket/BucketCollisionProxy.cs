@@ -5,6 +5,7 @@ public class BucketCollisionProxy : MonoBehaviour
     [Header("References")]
     public Transform bucketRoot;
     public Transform ropeAttachPoint;
+    public Transform nozzlePoint;
 
     [Header("Approximate Bucket Shape")]
     public Vector3 localCenter = new Vector3(0f, -0.35f, 0f);
@@ -36,7 +37,12 @@ public class BucketCollisionProxy : MonoBehaviour
 
     public Vector3 WorldNozzlePosition
     {
-        get { return BucketRoot.TransformPoint(nozzleLocalPosition); }
+        get { return nozzlePoint != null ? nozzlePoint.position : BucketRoot.TransformPoint(nozzleLocalPosition); }
+    }
+
+    public Vector3 LocalNozzlePosition
+    {
+        get { return nozzlePoint != null ? BucketRoot.InverseTransformPoint(nozzlePoint.position) : nozzleLocalPosition; }
     }
 
     private void Reset()
@@ -62,7 +68,7 @@ public class BucketCollisionProxy : MonoBehaviour
         Gizmos.DrawWireSphere(localCenter + Vector3.down * Mathf.Abs(bottomOffset), radius);
 
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(nozzleLocalPosition, nozzleRadius);
+        Gizmos.DrawWireSphere(LocalNozzlePosition, nozzleRadius);
 
         Gizmos.matrix = previousMatrix;
 

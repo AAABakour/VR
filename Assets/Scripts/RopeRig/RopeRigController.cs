@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [ExecuteAlways]
+[DefaultExecutionOrder(150)]
 public class RopeRigController : MonoBehaviour
 {
     [Header("Endpoints")]

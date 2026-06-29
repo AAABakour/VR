@@ -1,5 +1,6 @@
 using UnityEngine;
 
+[DefaultExecutionOrder(50)]
 public class BucketMotionDataProvider : MonoBehaviour
 {
     [Header("Sources")]

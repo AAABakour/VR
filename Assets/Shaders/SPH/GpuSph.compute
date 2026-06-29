@@ -1,0 +1,332 @@
+#pragma kernel InitializeParticles
+#pragma kernel ClearGrid
+#pragma kernel BuildGrid
+#pragma kernel ComputeDensityPressure
+#pragma kernel ComputeForces
+#pragma kernel Integrate
+#pragma kernel HandleBoxCollisions
+
+#define THREADS 256
+#define PI 3.14159265359
+
+struct ParticleState
+{
+    float3 position;
+    float3 velocity;
+    float density;
+    float pressure;
+};
+
+RWStructuredBuffer<ParticleState> _Particles;
+RWStructuredBuffer<float3> _Forces;
+RWStructuredBuffer<int> _CellCounts;
+RWStructuredBuffer<int> _CellParticles;
+
+int _ParticleCount;
+int _GridCellCount;
+int3 _GridDims;
+int _MaxParticlesPerCell;
+float _CellSize;
+float3 _BoundsSize;
+float3 _InitGridDims;
+float _ParticleRadius;
+float _InitialSpacing;
+float _SmoothingLength;
+float _ParticleMass;
+float _RestDensity;
+float _Stiffness;
+float _Viscosity;
+float3 _Gravity;
+float _Damping;
+float _DeltaTime;
+float _MaxVelocity;
+float _CollisionDamping;
+float _TangentDamping;
+float _WallOffset;
+
+uint Hash(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+float Random01(uint x)
+{
+    return (Hash(x) & 0x00ffffffu) / 16777215.0;
+}
+
+int CellIndexFromCoord(int3 coord)
+{
+    coord = clamp(coord, int3(0, 0, 0), _GridDims - 1);
+    return coord.x + coord.y * _GridDims.x + coord.z * _GridDims.x * _GridDims.y;
+}
+
+int3 CellCoordFromPosition(float3 position)
+{
+    float3 shifted = position + _BoundsSize * 0.5;
+    int3 coord = (int3)floor(shifted / max(_CellSize, 0.0001));
+    return clamp(coord, int3(0, 0, 0), _GridDims - 1);
+}
+
+float Poly6(float r2, float h)
+{
+    float h2 = h * h;
+    if (r2 >= h2)
+    {
+        return 0.0;
+    }
+
+    float x = h2 - r2;
+    return 315.0 / (64.0 * PI * pow(h, 9.0)) * x * x * x;
+}
+
+float SpikyGradient(float r, float h)
+{
+    if (r <= 0.00001 || r >= h)
+    {
+        return 0.0;
+    }
+
+    float x = h - r;
+    return -45.0 / (PI * pow(h, 6.0)) * x * x;
+}
+
+float ViscosityLaplacian(float r, float h)
+{
+    if (r >= h)
+    {
+        return 0.0;
+    }
+
+    return 45.0 / (PI * pow(h, 6.0)) * (h - r);
+}
+
+void Collide(inout ParticleState particle)
+{
+    float3 halfBounds = _BoundsSize * 0.5 - _WallOffset;
+    float3 minBounds = -halfBounds;
+    float3 maxBounds = halfBounds;
+
+    [unroll]
+    for (int axis = 0; axis < 3; axis++)
+    {
+        if (particle.position[axis] < minBounds[axis])
+        {
+            particle.position[axis] = minBounds[axis];
+            particle.velocity[axis] = abs(particle.velocity[axis]) * _CollisionDamping;
+            particle.velocity[(axis + 1) % 3] *= 1.0 - _TangentDamping;
+            particle.velocity[(axis + 2) % 3] *= 1.0 - _TangentDamping;
+        }
+        else if (particle.position[axis] > maxBounds[axis])
+        {
+            particle.position[axis] = maxBounds[axis];
+            particle.velocity[axis] = -abs(particle.velocity[axis]) * _CollisionDamping;
+            particle.velocity[(axis + 1) % 3] *= 1.0 - _TangentDamping;
+            particle.velocity[(axis + 2) % 3] *= 1.0 - _TangentDamping;
+        }
+    }
+}
+
+[numthreads(THREADS, 1, 1)]
+void InitializeParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    uint nx = max(1u, (uint)_InitGridDims.x);
+    uint ny = max(1u, (uint)_InitGridDims.y);
+    uint nz = max(1u, (uint)_InitGridDims.z);
+    uint x = index % nx;
+    uint y = (index / nx) % ny;
+    uint z = (index / (nx * ny)) % nz;
+
+    float spacing = max(_InitialSpacing, 0.001);
+    float3 fillSize = float3(nx, ny, nz) * spacing;
+    float3 bottom = float3(-fillSize.x * 0.5, -_BoundsSize.y * 0.5 + _WallOffset + spacing, -fillSize.z * 0.5);
+    float jitter = (Random01(index) - 0.5) * spacing * 0.08;
+
+    ParticleState particle;
+    particle.position = bottom + float3(x, y, z) * spacing + jitter;
+    particle.position.y = min(particle.position.y, _BoundsSize.y * 0.5 - _WallOffset);
+    particle.velocity = 0.0;
+    particle.density = _RestDensity;
+    particle.pressure = 0.0;
+    _Particles[index] = particle;
+    _Forces[index] = 0.0;
+}
+
+[numthreads(THREADS, 1, 1)]
+void ClearGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_GridCellCount)
+    {
+        return;
+    }
+
+    _CellCounts[index] = 0;
+}
+
+[numthreads(THREADS, 1, 1)]
+void BuildGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    ParticleState particle = _Particles[index];
+    int cellIndex = CellIndexFromCoord(CellCoordFromPosition(particle.position));
+    int slot;
+    InterlockedAdd(_CellCounts[cellIndex], 1, slot);
+
+    if (slot < _MaxParticlesPerCell)
+    {
+        _CellParticles[cellIndex * _MaxParticlesPerCell + slot] = (int)index;
+    }
+}
+
+[numthreads(THREADS, 1, 1)]
+void ComputeDensityPressure(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    ParticleState particle = _Particles[index];
+    int3 baseCoord = CellCoordFromPosition(particle.position);
+    float density = 0.0;
+
+    for (int z = -1; z <= 1; z++)
+    {
+        for (int y = -1; y <= 1; y++)
+        {
+            for (int x = -1; x <= 1; x++)
+            {
+                int3 coord = baseCoord + int3(x, y, z);
+                if (any(coord < 0) || any(coord >= _GridDims))
+                {
+                    continue;
+                }
+
+                int cellIndex = CellIndexFromCoord(coord);
+                int count = min(_CellCounts[cellIndex], _MaxParticlesPerCell);
+                for (int i = 0; i < count; i++)
+                {
+                    int neighborIndex = _CellParticles[cellIndex * _MaxParticlesPerCell + i];
+                    ParticleState neighbor = _Particles[neighborIndex];
+                    float3 delta = particle.position - neighbor.position;
+                    density += _ParticleMass * Poly6(dot(delta, delta), _SmoothingLength);
+                }
+            }
+        }
+    }
+
+    particle.density = max(density, _RestDensity * 0.1);
+    particle.pressure = max(0.0, _Stiffness * (particle.density - _RestDensity));
+    _Particles[index] = particle;
+}
+
+[numthreads(THREADS, 1, 1)]
+void ComputeForces(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    ParticleState particle = _Particles[index];
+    int3 baseCoord = CellCoordFromPosition(particle.position);
+    float3 pressureForce = 0.0;
+    float3 viscosityForce = 0.0;
+
+    for (int z = -1; z <= 1; z++)
+    {
+        for (int y = -1; y <= 1; y++)
+        {
+            for (int x = -1; x <= 1; x++)
+            {
+                int3 coord = baseCoord + int3(x, y, z);
+                if (any(coord < 0) || any(coord >= _GridDims))
+                {
+                    continue;
+                }
+
+                int cellIndex = CellIndexFromCoord(coord);
+                int count = min(_CellCounts[cellIndex], _MaxParticlesPerCell);
+                for (int i = 0; i < count; i++)
+                {
+                    int neighborIndex = _CellParticles[cellIndex * _MaxParticlesPerCell + i];
+                    if (neighborIndex == (int)index)
+                    {
+                        continue;
+                    }
+
+                    ParticleState neighbor = _Particles[neighborIndex];
+                    float3 delta = particle.position - neighbor.position;
+                    float distance = length(delta);
+                    if (distance >= _SmoothingLength || distance <= 0.00001)
+                    {
+                        continue;
+                    }
+
+                    float3 direction = delta / distance;
+                    float pressureTerm = _ParticleMass * (particle.pressure + neighbor.pressure) / (2.0 * max(neighbor.density, 0.0001));
+                    pressureForce += -direction * pressureTerm * SpikyGradient(distance, _SmoothingLength);
+                    viscosityForce += _Viscosity * _ParticleMass * (neighbor.velocity - particle.velocity) / max(neighbor.density, 0.0001) * ViscosityLaplacian(distance, _SmoothingLength);
+                }
+            }
+        }
+    }
+
+    _Forces[index] = pressureForce + viscosityForce + _Gravity * particle.density;
+}
+
+[numthreads(THREADS, 1, 1)]
+void Integrate(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    ParticleState particle = _Particles[index];
+    float3 acceleration = _Forces[index] / max(particle.density, 0.0001);
+    particle.velocity += acceleration * _DeltaTime;
+    particle.velocity *= 1.0 - saturate(_Damping);
+
+    float speed = length(particle.velocity);
+    if (speed > _MaxVelocity)
+    {
+        particle.velocity = particle.velocity / speed * _MaxVelocity;
+    }
+
+    particle.position += particle.velocity * _DeltaTime;
+    _Particles[index] = particle;
+}
+
+[numthreads(THREADS, 1, 1)]
+void HandleBoxCollisions(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    ParticleState particle = _Particles[index];
+    Collide(particle);
+    _Particles[index] = particle;
+}

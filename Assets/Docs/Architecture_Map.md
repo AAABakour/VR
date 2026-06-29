@@ -1,6 +1,6 @@
 # Architecture Map
 
-This map describes the project structure after Phase 2. It separates current legacy prototype behavior from the new rope, bucket, and future fluid simulation architecture.
+This map describes the project structure after Phase 3. It separates current legacy prototype behavior from the rope, bucket, and GPU SPH benchmark architecture.
 
 ## Core
 
@@ -68,7 +68,7 @@ Location:
 
 - `Assets/Scripts/SPH`
 
-Future responsibility:
+Responsibility:
 
 - GPU fluid data model.
 - Solver configuration.
@@ -77,7 +77,9 @@ Future responsibility:
 
 Current status:
 
-- Folder prepared only. No SPH solver was implemented in Phase 1.
+- Phase 3 implements `GpuSphSolver`, `GpuSphSettings`, `GpuSphDebugStats`, `GpuSphBufferUtility`, and `SphKernelNames`.
+- `Assets/Shaders/SPH/GpuSph.compute` contains initialization, grid build, density/pressure, force, integration, and box collision kernels.
+- The current solver is independent from the bucket and canvas.
 
 ## SPH Rendering
 
@@ -85,7 +87,7 @@ Location:
 
 - `Assets/Scripts/SPH/Rendering`
 
-Future responsibility:
+Responsibility:
 
 - GPU particle rendering.
 - Surface extraction or screen-space fluid rendering.
@@ -93,7 +95,9 @@ Future responsibility:
 
 Current status:
 
-- Folder prepared only.
+- Phase 3 implements `GpuSphParticleRenderer`.
+- Particles render from GPU buffers with procedural indirect drawing and render stride.
+- No particle GameObjects are created.
 
 ## SPH Collision
 
@@ -101,7 +105,7 @@ Location:
 
 - `Assets/Scripts/SPH/Collision`
 
-Future responsibility:
+Responsibility:
 
 - Collision boundary encoding.
 - Bucket, nozzle, canvas, and world collision inputs.
@@ -109,7 +113,8 @@ Future responsibility:
 
 Current status:
 
-- Folder prepared only.
+- Phase 3 implements `FluidBoxController` for transparent rectangular box bounds, motion-frame gravity, collision sizing, and runtime glass/edge visuals.
+- Future work should translate `BucketCollisionProxy` into solver collision boundaries.
 
 ## SPH Integration
 
@@ -117,14 +122,15 @@ Location:
 
 - `Assets/Scripts/SPH/Integration`
 
-Future responsibility:
+Responsibility:
 
 - Bridges between bucket motion, solver state, emission, impacts, and painting.
 - High-level scene integration scripts.
 
 Current status:
 
-- Folder prepared only.
+- Phase 3 implements `FluidBoxMotionController` and `FluidBoxBenchmarkController`.
+- The benchmark applies existing simulation profiles and coordinates reset/profile/motion controls.
 
 ## Painting
 
@@ -159,7 +165,7 @@ Future responsibility:
 Current status:
 
 - Existing `SimulationStatsUI` remains in place.
-- `UI/Debug` is prepared for future debug-only UI.
+- Phase 3 adds `UI/Debug/FluidBoxBenchmarkUI.cs` for the independent SPH benchmark.
 
 ## Legacy
 
@@ -200,13 +206,28 @@ Phase 2 duplicated integration scene:
 
 - `Assets/Scenes/Integrated/MainSimulationScene_Phase02_RopeBucketRig.unity`
 
+Phase 3 benchmark scene:
+
+- `Assets/Scenes/Benchmarks/FluidBoxBenchmarkScene.unity`
+
 Future benchmark location:
 
 - `Assets/Scenes/Benchmarks`
 
-The benchmark folder is prepared for Phase 3. No benchmark scene was created in Phase 2.
+The benchmark folder now contains the independent transparent fluid box GPU SPH scene.
 
 ## Phase Reports
 
 - `Assets/Docs/Phase01_Architecture_Report.md`
 - `Assets/Docs/Phase02_RopeBucketRig_Report.md`
+- `Assets/Docs/Phase03_FluidBoxGpuSph_Report.md`
+
+## Future Integration Path
+
+Phase 4 should bridge the independent SPH foundation into the bucket only after benchmark validation:
+
+- Use `BucketCollisionProxy` as the source for bucket-local SPH boundaries.
+- Add nozzle emission from bucket/nozzle references.
+- Extract sparse impact events without full particle CPU readback.
+- Feed canvas painting through a controlled impact bridge.
+- Keep the legacy paint emitter available until parity is proven.
