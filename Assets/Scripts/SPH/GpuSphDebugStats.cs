@@ -6,13 +6,23 @@ public class GpuSphDebugStats : MonoBehaviour
     public int renderedParticleCount;
     public int renderStride;
     public float estimatedGpuMemoryMb;
+    public float estimatedParticleBufferMemoryMb;
+    public float estimatedGridMemoryMb;
+    public float estimatedTotalGpuMemoryMb;
     public string activeMode;
     public Vector3Int gridDimensions;
     public Vector3 boundsSize;
+    public int maxParticlesPerCell;
+    public int gridOverflowCount;
+    public int particleDispatchGroupCount;
+    public int gridDispatchGroupCount;
     public int substeps;
+    public float timestep;
     public float smoothingLength;
     public float restDensity;
     public float viscosity;
+    public bool solverInitialized;
+    public bool buffersValid;
     public float fps;
 
     private float fpsAccumulator;
@@ -50,12 +60,22 @@ public class GpuSphDebugStats : MonoBehaviour
         renderedParticleCount = solver.RenderedParticleCount;
         renderStride = solver.RenderStride;
         estimatedGpuMemoryMb = solver.EstimatedGpuMemoryMb;
+        estimatedParticleBufferMemoryMb = solver.EstimatedParticleBufferMemoryMb;
+        estimatedGridMemoryMb = solver.EstimatedGridMemoryMb;
+        estimatedTotalGpuMemoryMb = solver.EstimatedTotalGpuMemoryMb;
         activeMode = solver.ActiveModeLabel;
         gridDimensions = solver.GridDimensions;
         boundsSize = solver.BoundsSize;
+        maxParticlesPerCell = solver.MaxParticlesPerCell;
+        gridOverflowCount = solver.GridOverflowCount;
+        particleDispatchGroupCount = solver.ParticleDispatchGroupCount;
+        gridDispatchGroupCount = solver.GridDispatchGroupCount;
         substeps = solver.Substeps;
+        timestep = solver.Timestep;
         smoothingLength = solver.SmoothingLength;
         restDensity = solver.RestDensity;
         viscosity = solver.Viscosity;
+        solverInitialized = solver.IsInitialized;
+        buffersValid = solver.BuffersValid;
     }
 }

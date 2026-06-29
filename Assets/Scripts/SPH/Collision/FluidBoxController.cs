@@ -6,6 +6,8 @@ public class FluidBoxController : MonoBehaviour
     public Vector3 boundsSize = new Vector3(4f, 2f, 2f);
     public Transform boxVisual;
     public Transform boundsGizmoRoot;
+    public Material glassMaterialTemplate;
+    public Material edgeMaterialTemplate;
     public Color glassColor = new Color(0.35f, 0.75f, 1f, 0.18f);
     public Color edgeColor = new Color(0.7f, 0.95f, 1f, 0.9f);
     public bool generateRuntimeVisuals = true;
@@ -134,30 +136,43 @@ public class FluidBoxController : MonoBehaviour
 
         if (glassMaterial == null)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
+            if (glassMaterialTemplate != null)
             {
-                shader = Shader.Find("Unlit/Color");
+                glassMaterial = glassMaterialTemplate;
             }
+            else
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+                if (shader == null)
+                {
+                    shader = Shader.Find("Unlit/Color");
+                }
 
-            glassMaterial = new Material(shader);
-            glassMaterial.name = "Runtime Transparent Fluid Box Glass";
-            glassMaterial.color = glassColor;
-            if (glassMaterial.HasProperty("_BaseColor"))
-            {
-                glassMaterial.SetColor("_BaseColor", glassColor);
+                if (shader == null)
+                {
+                    Debug.LogWarning("[FluidBoxController] No fallback transparent shader was found.", this);
+                    return;
+                }
+
+                glassMaterial = new Material(shader);
+                glassMaterial.name = "Runtime Transparent Fluid Box Glass";
+                glassMaterial.color = glassColor;
+                if (glassMaterial.HasProperty("_BaseColor"))
+                {
+                    glassMaterial.SetColor("_BaseColor", glassColor);
+                }
+                if (glassMaterial.HasProperty("_Color"))
+                {
+                    glassMaterial.SetColor("_Color", glassColor);
+                }
+                glassMaterial.SetFloat("_Surface", 1f);
+                glassMaterial.SetFloat("_Blend", 0f);
+                glassMaterial.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                glassMaterial.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                glassMaterial.SetFloat("_ZWrite", 0f);
+                glassMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                glassMaterial.renderQueue = 3000;
             }
-            if (glassMaterial.HasProperty("_Color"))
-            {
-                glassMaterial.SetColor("_Color", glassColor);
-            }
-            glassMaterial.SetFloat("_Surface", 1f);
-            glassMaterial.SetFloat("_Blend", 0f);
-            glassMaterial.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            glassMaterial.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            glassMaterial.SetFloat("_ZWrite", 0f);
-            glassMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            glassMaterial.renderQueue = 3000;
         }
 
         renderer.sharedMaterial = glassMaterial;
@@ -189,10 +204,17 @@ public class FluidBoxController : MonoBehaviour
         edgeLines = new LineRenderer[12];
         if (edgeMaterial == null)
         {
-            Shader shader = Shader.Find("Sprites/Default");
-            edgeMaterial = new Material(shader);
-            edgeMaterial.name = "Runtime Transparent Fluid Box Edges";
-            edgeMaterial.color = edgeColor;
+            if (edgeMaterialTemplate != null)
+            {
+                edgeMaterial = edgeMaterialTemplate;
+            }
+            else
+            {
+                Shader shader = Shader.Find("Sprites/Default");
+                edgeMaterial = new Material(shader);
+                edgeMaterial.name = "Runtime Transparent Fluid Box Edges";
+                edgeMaterial.color = edgeColor;
+            }
         }
 
         for (int i = 0; i < edgeLines.Length; i++)

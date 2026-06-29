@@ -79,6 +79,7 @@ Current status:
 
 - Phase 3 implements `GpuSphSolver`, `GpuSphSettings`, `GpuSphDebugStats`, `GpuSphBufferUtility`, and `SphKernelNames`.
 - `Assets/Shaders/SPH/GpuSph.compute` contains initialization, grid build, density/pressure, force, integration, and box collision kernels.
+- Phase 3.1 adds runtime settings copies, grid overflow counters, and expanded debug stats.
 - The current solver is independent from the bucket and canvas.
 
 ## SPH Rendering
@@ -97,6 +98,7 @@ Current status:
 
 - Phase 3 implements `GpuSphParticleRenderer`.
 - Particles render from GPU buffers with procedural indirect drawing and render stride.
+- `Assets/Materials/SPH/MAT_GpuSphParticle.mat` is assigned in the benchmark scene.
 - No particle GameObjects are created.
 
 ## SPH Collision
@@ -114,6 +116,7 @@ Responsibility:
 Current status:
 
 - Phase 3 implements `FluidBoxController` for transparent rectangular box bounds, motion-frame gravity, collision sizing, and runtime glass/edge visuals.
+- `Assets/Materials/SPH/MAT_TransparentFluidBox.mat` is assigned in the benchmark scene.
 - Future work should translate `BucketCollisionProxy` into solver collision boundaries.
 
 ## SPH Integration
@@ -218,9 +221,10 @@ The benchmark folder now contains the independent transparent fluid box GPU SPH 
 
 ## Phase Reports
 
-- `Assets/Docs/Phase01_Architecture_Report.md`
+- `Assets/Docs/Phase01_ArchitectureCleanup_Report.md`
 - `Assets/Docs/Phase02_RopeBucketRig_Report.md`
 - `Assets/Docs/Phase03_FluidBoxGpuSph_Report.md`
+- `Assets/Docs/Phase03_1_Finalization_Report.md`
 
 ## Future Integration Path
 

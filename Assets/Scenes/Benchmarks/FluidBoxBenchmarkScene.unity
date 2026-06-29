@@ -110,6 +110,7 @@ GameObject:
   m_Component:
   - component: {fileID: 300000001}
   - component: {fileID: 300000002}
+  - component: {fileID: 300000003}
   m_Layer: 0
   m_Name: FluidBenchmarkRoot
   m_TagString: Untagged
@@ -159,6 +160,48 @@ MonoBehaviour:
   presentationProfile: {fileID: 11400000, guid: c99b6025103542379b83b7da75a59f50, type: 2}
   professorBenchmarkProfile: {fileID: 11400000, guid: 6bc3de8702b34a6289814fee9c3381c6, type: 2}
   vrSafeProfile: {fileID: 11400000, guid: 801893ddf9cd4765aa3c0c7eb20c265e, type: 2}
+--- !u!114 &300000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 300000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 265541e95d634db19b9327b3043a5aeb, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::SceneReferenceValidator
+  validateOnStart: 1
+  autoResolveMissingReferences: 0
+  validateLegacySceneReferences: 0
+  validatePhaseTwoRigReferences: 0
+  validatePhaseThreeFluidBoxReferences: 1
+  pivotPoint: {fileID: 0}
+  bucket: {fileID: 0}
+  rope: {fileID: 0}
+  paintNozzle: {fileID: 0}
+  canvasBoard: {fileID: 0}
+  mainUI: {fileID: 0}
+  eventSystem: {fileID: 300000090}
+  simulationManager: {fileID: 0}
+  paintEmitter: {fileID: 0}
+  paintParticleSimulator: {fileID: 0}
+  canvasPainter: {fileID: 0}
+  pendulumController: {fileID: 0}
+  ropeRigController: {fileID: 0}
+  bucketRigController: {fileID: 0}
+  bucketHandleRig: {fileID: 0}
+  bucketMotionDataProvider: {fileID: 0}
+  bucketCollisionProxy: {fileID: 0}
+  ropeRigSubsystemAdapter: {fileID: 0}
+  bucketRigSubsystemAdapter: {fileID: 0}
+  gpuSphSolver: {fileID: 300000042}
+  gpuSphParticleRenderer: {fileID: 300000043}
+  fluidBoxController: {fileID: 300000012}
+  fluidBoxMotionController: {fileID: 300000013}
+  fluidBoxBenchmarkController: {fileID: 300000002}
+  fluidBoxBenchmarkUI: {fileID: 300000062}
 --- !u!1 &300000010
 GameObject:
   m_ObjectHideFlags: 0
@@ -209,6 +252,8 @@ MonoBehaviour:
   boundsSize: {x: 4, y: 2, z: 2}
   boxVisual: {fileID: 300000021}
   boundsGizmoRoot: {fileID: 300000031}
+  glassMaterialTemplate: {fileID: 2100000, guid: 4f197858fc464de9b5f4991cd67c9a16, type: 2}
+  edgeMaterialTemplate: {fileID: 0}
   glassColor: {r: 0.35, g: 0.75, b: 1, a: 0.18}
   edgeColor: {r: 0.7, g: 0.95, b: 1, a: 0.9}
   generateRuntimeVisuals: 1
@@ -340,12 +385,13 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::GpuSphSolver
   sphComputeShader: {fileID: 7200000, guid: a9c60fbb5803423ea707e6b0323b18b7, type: 3}
-  settings: {fileID: 11400000, guid: 95aa738160ee4249998d14fb94b2064d, type: 2}
+  settingsTemplate: {fileID: 11400000, guid: 95aa738160ee4249998d14fb94b2064d, type: 2}
   fluidBox: {fileID: 300000012}
   debugStats: {fileID: 300000044}
   initializeOnStart: 1
   simulate: 1
   applySettingsBoundsToBox: 1
+  overflowReadbackInterval: 0.25
 --- !u!114 &300000043
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -360,7 +406,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GpuSphParticleRenderer
   solver: {fileID: 300000042}
   fluidBox: {fileID: 300000012}
-  particleMaterial: {fileID: 0}
+  particleMaterial: {fileID: 2100000, guid: 0d2ef2dc083d411a958d0d42950ce17e, type: 2}
   renderCamera: {fileID: 300000072}
   particleSize: 0.045
   particleColor: {r: 0.18, g: 0.65, b: 1, a: 0.75}
@@ -380,13 +426,23 @@ MonoBehaviour:
   renderedParticleCount: 0
   renderStride: 1
   estimatedGpuMemoryMb: 0
+  estimatedParticleBufferMemoryMb: 0
+  estimatedGridMemoryMb: 0
+  estimatedTotalGpuMemoryMb: 0
   activeMode:
   gridDimensions: {x: 0, y: 0, z: 0}
   boundsSize: {x: 0, y: 0, z: 0}
+  maxParticlesPerCell: 0
+  gridOverflowCount: 0
+  particleDispatchGroupCount: 0
+  gridDispatchGroupCount: 0
   substeps: 0
+  timestep: 0
   smoothingLength: 0
   restDensity: 0
   viscosity: 0
+  solverInitialized: 0
+  buffersValid: 0
   fps: 0
 --- !u!1 &300000050
 GameObject:

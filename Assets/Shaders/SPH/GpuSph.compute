@@ -21,6 +21,7 @@ RWStructuredBuffer<ParticleState> _Particles;
 RWStructuredBuffer<float3> _Forces;
 RWStructuredBuffer<int> _CellCounts;
 RWStructuredBuffer<int> _CellParticles;
+RWStructuredBuffer<int> _OverflowCounters;
 
 int _ParticleCount;
 int _GridCellCount;
@@ -172,6 +173,11 @@ void ClearGrid(uint3 id : SV_DispatchThreadID)
     }
 
     _CellCounts[index] = 0;
+
+    if (index == 0)
+    {
+        _OverflowCounters[0] = 0;
+    }
 }
 
 [numthreads(THREADS, 1, 1)]
@@ -191,6 +197,10 @@ void BuildGrid(uint3 id : SV_DispatchThreadID)
     if (slot < _MaxParticlesPerCell)
     {
         _CellParticles[cellIndex * _MaxParticlesPerCell + slot] = (int)index;
+    }
+    else
+    {
+        InterlockedAdd(_OverflowCounters[0], 1);
     }
 }
 

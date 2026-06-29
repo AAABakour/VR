@@ -1,21 +1,27 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [DefaultExecutionOrder(80)]
 public class GpuSphSolver : MonoBehaviour
 {
     public ComputeShader sphComputeShader;
-    public GpuSphSettings settings;
+    [FormerlySerializedAs("settings")]
+    public GpuSphSettings settingsTemplate;
     public FluidBoxController fluidBox;
     public GpuSphDebugStats debugStats;
     public bool initializeOnStart = true;
     public bool simulate = true;
     public bool applySettingsBoundsToBox = true;
+    [Min(0.05f)]
+    public float overflowReadbackInterval = 0.25f;
 
     private ComputeBuffer particleBuffer;
     private ComputeBuffer forceBuffer;
     private ComputeBuffer cellCountsBuffer;
     private ComputeBuffer cellParticlesBuffer;
+    private ComputeBuffer overflowCountersBuffer;
 
+    private GpuSphSettings runtimeSettings;
     private int initializeKernel;
     private int clearGridKernel;
     private int buildGridKernel;
@@ -32,12 +38,26 @@ public class GpuSphSolver : MonoBehaviour
     private Vector3 initGridDimensions;
     private float cellSize;
     private float initialSpacing;
-    private float estimatedGpuMemoryMb;
+    private float estimatedParticleBufferMemoryMb;
+    private float estimatedGridMemoryMb;
+    private float estimatedTotalGpuMemoryMb;
+    private int particleDispatchGroupCount;
+    private int gridDispatchGroupCount;
+    private int gridOverflowCount;
+    private readonly int[] overflowReadbackScratch = new int[1];
+    private float overflowReadbackTimer;
     private bool initialized;
+    private bool kernelsReady;
+    private bool warnedMissingConfiguration;
 
     public ComputeBuffer ParticleBuffer
     {
         get { return particleBuffer; }
+    }
+
+    public GpuSphSettings RuntimeSettings
+    {
+        get { return runtimeSettings; }
     }
 
     public int ParticleCount
@@ -57,12 +77,27 @@ public class GpuSphSolver : MonoBehaviour
 
     public float EstimatedGpuMemoryMb
     {
-        get { return estimatedGpuMemoryMb; }
+        get { return estimatedTotalGpuMemoryMb; }
+    }
+
+    public float EstimatedParticleBufferMemoryMb
+    {
+        get { return estimatedParticleBufferMemoryMb; }
+    }
+
+    public float EstimatedGridMemoryMb
+    {
+        get { return estimatedGridMemoryMb; }
+    }
+
+    public float EstimatedTotalGpuMemoryMb
+    {
+        get { return estimatedTotalGpuMemoryMb; }
     }
 
     public string ActiveModeLabel
     {
-        get { return settings != null ? settings.modeLabel : "Unconfigured"; }
+        get { return ActiveSettings != null ? ActiveSettings.modeLabel : "Unconfigured"; }
     }
 
     public Vector3Int GridDimensions
@@ -72,27 +107,74 @@ public class GpuSphSolver : MonoBehaviour
 
     public Vector3 BoundsSize
     {
-        get { return settings != null ? settings.boundsSize : Vector3.zero; }
+        get { return ActiveSettings != null ? ActiveSettings.boundsSize : Vector3.zero; }
     }
 
     public int Substeps
     {
-        get { return settings != null ? settings.substeps : 0; }
+        get { return ActiveSettings != null ? ActiveSettings.substeps : 0; }
     }
 
     public float SmoothingLength
     {
-        get { return settings != null ? settings.smoothingLength : 0f; }
+        get { return ActiveSettings != null ? ActiveSettings.smoothingLength : 0f; }
     }
 
     public float RestDensity
     {
-        get { return settings != null ? settings.restDensity : 0f; }
+        get { return ActiveSettings != null ? ActiveSettings.restDensity : 0f; }
     }
 
     public float Viscosity
     {
-        get { return settings != null ? settings.viscosity : 0f; }
+        get { return ActiveSettings != null ? ActiveSettings.viscosity : 0f; }
+    }
+
+    public float Timestep
+    {
+        get { return ActiveSettings != null ? ActiveSettings.timestep : 0f; }
+    }
+
+    public int MaxParticlesPerCell
+    {
+        get { return maxParticlesPerCell; }
+    }
+
+    public int GridOverflowCount
+    {
+        get { return gridOverflowCount; }
+    }
+
+    public int ParticleDispatchGroupCount
+    {
+        get { return particleDispatchGroupCount; }
+    }
+
+    public int GridDispatchGroupCount
+    {
+        get { return gridDispatchGroupCount; }
+    }
+
+    public bool IsInitialized
+    {
+        get { return initialized; }
+    }
+
+    public bool BuffersValid
+    {
+        get
+        {
+            return particleBuffer != null &&
+                forceBuffer != null &&
+                cellCountsBuffer != null &&
+                cellParticlesBuffer != null &&
+                overflowCountersBuffer != null;
+        }
+    }
+
+    private GpuSphSettings ActiveSettings
+    {
+        get { return runtimeSettings != null ? runtimeSettings : settingsTemplate; }
     }
 
     private void Start()
@@ -125,23 +207,28 @@ public class GpuSphSolver : MonoBehaviour
 
     public void Initialize()
     {
-        if (settings == null || sphComputeShader == null)
+        if (settingsTemplate == null || sphComputeShader == null)
         {
-            Debug.LogWarning("[GpuSphSolver] Missing settings or compute shader.", this);
+            WarnOnce("[GpuSphSolver] Missing settings template or compute shader.");
             return;
         }
 
-        settings.ClampValues();
-        particleCount = settings.ClampedParticleCount;
-        renderStride = settings.ClampedRenderStride;
-        maxParticlesPerCell = Mathf.Max(1, settings.maxParticlesPerCell);
+        EnsureRuntimeSettings(false);
+        runtimeSettings.ClampValues();
+        particleCount = runtimeSettings.ClampedParticleCount;
+        renderStride = runtimeSettings.ClampedRenderStride;
+        maxParticlesPerCell = Mathf.Max(1, runtimeSettings.maxParticlesPerCell);
 
         if (fluidBox != null && applySettingsBoundsToBox)
         {
-            fluidBox.boundsSize = settings.boundsSize;
+            fluidBox.boundsSize = runtimeSettings.boundsSize;
         }
 
-        CacheKernels();
+        if (!CacheKernels())
+        {
+            return;
+        }
+
         ConfigureGrid();
         ReleaseBuffers();
         AllocateBuffers();
@@ -161,34 +248,40 @@ public class GpuSphSolver : MonoBehaviour
 
     public void ApplySettings(GpuSphSettings newSettings)
     {
-        settings = newSettings;
+        settingsTemplate = newSettings;
+        EnsureRuntimeSettings(true);
         Initialize();
     }
 
     public void ApplySimulationProfile(SimulationProfile profile)
     {
-        if (settings == null || profile == null)
+        if (settingsTemplate == null || profile == null)
         {
             return;
         }
 
-        settings.ApplySimulationProfile(profile);
+        EnsureRuntimeSettings(false);
+        runtimeSettings.ApplySimulationProfile(profile);
         Initialize();
     }
 
-    private void CacheKernels()
+    private bool CacheKernels()
     {
-        initializeKernel = sphComputeShader.FindKernel(SphKernelNames.InitializeParticles);
-        clearGridKernel = sphComputeShader.FindKernel(SphKernelNames.ClearGrid);
-        buildGridKernel = sphComputeShader.FindKernel(SphKernelNames.BuildGrid);
-        densityPressureKernel = sphComputeShader.FindKernel(SphKernelNames.ComputeDensityPressure);
-        forcesKernel = sphComputeShader.FindKernel(SphKernelNames.ComputeForces);
-        integrateKernel = sphComputeShader.FindKernel(SphKernelNames.Integrate);
-        collisionKernel = sphComputeShader.FindKernel(SphKernelNames.HandleBoxCollisions);
+        kernelsReady =
+            TryFindKernel(SphKernelNames.InitializeParticles, ref initializeKernel) &&
+            TryFindKernel(SphKernelNames.ClearGrid, ref clearGridKernel) &&
+            TryFindKernel(SphKernelNames.BuildGrid, ref buildGridKernel) &&
+            TryFindKernel(SphKernelNames.ComputeDensityPressure, ref densityPressureKernel) &&
+            TryFindKernel(SphKernelNames.ComputeForces, ref forcesKernel) &&
+            TryFindKernel(SphKernelNames.Integrate, ref integrateKernel) &&
+            TryFindKernel(SphKernelNames.HandleBoxCollisions, ref collisionKernel);
+
+        return kernelsReady;
     }
 
     private void ConfigureGrid()
     {
+        GpuSphSettings settings = runtimeSettings;
         cellSize = Mathf.Max(settings.smoothingLength * settings.cellSizeMultiplier, 0.01f);
         gridDimensions = new Vector3Int(
             Mathf.Max(1, Mathf.CeilToInt(settings.boundsSize.x / cellSize)),
@@ -205,6 +298,8 @@ public class GpuSphSolver : MonoBehaviour
         int nz = Mathf.Max(1, Mathf.FloorToInt(settings.boundsSize.z * 0.72f / spacing));
         int ny = Mathf.Max(1, Mathf.CeilToInt(particleCount / (float)(nx * nz)));
         initGridDimensions = new Vector3(nx, ny, nz);
+        particleDispatchGroupCount = GpuSphBufferUtility.DispatchGroups(particleCount, 256);
+        gridDispatchGroupCount = GpuSphBufferUtility.DispatchGroups(gridCellCount, 256);
     }
 
     private void AllocateBuffers()
@@ -213,22 +308,31 @@ public class GpuSphSolver : MonoBehaviour
         forceBuffer = new ComputeBuffer(particleCount, GpuSphBufferUtility.ForceStrideBytes, ComputeBufferType.Structured);
         cellCountsBuffer = new ComputeBuffer(gridCellCount, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
         cellParticlesBuffer = new ComputeBuffer(gridCellCount * maxParticlesPerCell, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
+        overflowCountersBuffer = new ComputeBuffer(1, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
+        overflowReadbackScratch[0] = 0;
+        overflowCountersBuffer.SetData(overflowReadbackScratch);
 
         SetBuffersForKernel(initializeKernel);
+        SetBuffersForKernel(clearGridKernel);
         SetBuffersForKernel(buildGridKernel);
         SetBuffersForKernel(densityPressureKernel);
         SetBuffersForKernel(forcesKernel);
         SetBuffersForKernel(integrateKernel);
         SetBuffersForKernel(collisionKernel);
-        sphComputeShader.SetBuffer(clearGridKernel, "_CellCounts", cellCountsBuffer);
 
-        long bytes =
+        long particleBytes =
             (long)particleCount * GpuSphBufferUtility.ParticleStrideBytes +
-            (long)particleCount * GpuSphBufferUtility.ForceStrideBytes +
+            (long)particleCount * GpuSphBufferUtility.ForceStrideBytes;
+        long gridBytes =
             (long)gridCellCount * GpuSphBufferUtility.IntStrideBytes +
-            (long)gridCellCount * maxParticlesPerCell * GpuSphBufferUtility.IntStrideBytes;
+            (long)gridCellCount * maxParticlesPerCell * GpuSphBufferUtility.IntStrideBytes +
+            GpuSphBufferUtility.IntStrideBytes;
 
-        estimatedGpuMemoryMb = GpuSphBufferUtility.BytesToMegabytes(bytes);
+        estimatedParticleBufferMemoryMb = GpuSphBufferUtility.BytesToMegabytes(particleBytes);
+        estimatedGridMemoryMb = GpuSphBufferUtility.BytesToMegabytes(gridBytes);
+        estimatedTotalGpuMemoryMb = estimatedParticleBufferMemoryMb + estimatedGridMemoryMb;
+        gridOverflowCount = 0;
+        overflowReadbackTimer = overflowReadbackInterval;
     }
 
     private void SetBuffersForKernel(int kernel)
@@ -237,10 +341,12 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetBuffer(kernel, "_Forces", forceBuffer);
         sphComputeShader.SetBuffer(kernel, "_CellCounts", cellCountsBuffer);
         sphComputeShader.SetBuffer(kernel, "_CellParticles", cellParticlesBuffer);
+        sphComputeShader.SetBuffer(kernel, "_OverflowCounters", overflowCountersBuffer);
     }
 
     private void SetCommonShaderParameters()
     {
+        GpuSphSettings settings = runtimeSettings;
         Vector3 gravity = fluidBox != null ? fluidBox.LocalGravity : settings.gravity;
         Vector3 boundsSize = fluidBox != null ? fluidBox.BoundsSize : settings.boundsSize;
 
@@ -267,7 +373,13 @@ public class GpuSphSolver : MonoBehaviour
 
     private void StepSimulation()
     {
+        if (!kernelsReady || !BuffersValid)
+        {
+            return;
+        }
+
         SetCommonShaderParameters();
+        GpuSphSettings settings = runtimeSettings;
         float dt = settings.timestep / Mathf.Max(1, settings.substeps);
         sphComputeShader.SetFloat("_DeltaTime", dt);
 
@@ -281,6 +393,7 @@ public class GpuSphSolver : MonoBehaviour
             Dispatch(collisionKernel, particleCount);
         }
 
+        ReadbackOverflowCounterIfDue();
         UpdateDebugStats();
     }
 
@@ -297,12 +410,73 @@ public class GpuSphSolver : MonoBehaviour
         }
     }
 
+    private void EnsureRuntimeSettings(bool forceClone)
+    {
+        if (settingsTemplate == null)
+        {
+            return;
+        }
+
+        if (runtimeSettings != null && !forceClone)
+        {
+            return;
+        }
+
+        runtimeSettings = Instantiate(settingsTemplate);
+        runtimeSettings.name = settingsTemplate.name + "_Runtime";
+        runtimeSettings.hideFlags = HideFlags.DontSave;
+    }
+
+    private bool TryFindKernel(string kernelName, ref int kernelIndex)
+    {
+        try
+        {
+            kernelIndex = sphComputeShader.FindKernel(kernelName);
+            return true;
+        }
+        catch (System.Exception exception)
+        {
+            Debug.LogWarning("[GpuSphSolver] Missing compute kernel '" + kernelName + "': " + exception.Message, this);
+            return false;
+        }
+    }
+
+    private void ReadbackOverflowCounterIfDue()
+    {
+        if (overflowCountersBuffer == null)
+        {
+            return;
+        }
+
+        overflowReadbackTimer += Time.unscaledDeltaTime;
+        if (overflowReadbackTimer < overflowReadbackInterval)
+        {
+            return;
+        }
+
+        overflowReadbackTimer = 0f;
+        overflowCountersBuffer.GetData(overflowReadbackScratch);
+        gridOverflowCount = overflowReadbackScratch[0];
+    }
+
+    private void WarnOnce(string message)
+    {
+        if (warnedMissingConfiguration)
+        {
+            return;
+        }
+
+        warnedMissingConfiguration = true;
+        Debug.LogWarning(message, this);
+    }
+
     private void ReleaseBuffers()
     {
         GpuSphBufferUtility.ReleaseBuffer(ref particleBuffer);
         GpuSphBufferUtility.ReleaseBuffer(ref forceBuffer);
         GpuSphBufferUtility.ReleaseBuffer(ref cellCountsBuffer);
         GpuSphBufferUtility.ReleaseBuffer(ref cellParticlesBuffer);
+        GpuSphBufferUtility.ReleaseBuffer(ref overflowCountersBuffer);
         initialized = false;
     }
 }

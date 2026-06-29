@@ -88,6 +88,7 @@ Particles are rendered from the GPU particle buffer using procedural indirect dr
 
 - `Assets/Scripts/SPH/Rendering/GpuSphParticleRenderer.cs`
 - `Assets/Shaders/SPH/GPU_SPH_Particle_Unlit.shader`
+- `Assets/Materials/SPH/MAT_GpuSphParticle.mat`
 
 No particle GameObjects are created. The renderer draws camera-facing quads from `SV_VertexID`.
 
@@ -98,6 +99,17 @@ Render stride separates simulation count from draw count:
 - 1,000,000 simulated, stride 10 = about 100,000 rendered.
 
 The UI reports both simulated and rendered counts separately.
+
+## Phase 3.1 Hardening
+
+Phase 3.1 finalized several benchmark reliability details:
+
+- Particle rendering now uses the explicit material asset `MAT_GpuSphParticle` in the benchmark scene.
+- The transparent box uses `MAT_TransparentFluidBox` instead of relying only on runtime shader lookup.
+- `GpuSphSolver` treats `GpuSphSettings_FluidBox` as a template and creates a runtime copy before applying profiles.
+- Grid overflow is counted on the GPU and a compact counter is read back periodically.
+- The UI now displays particle memory, grid memory, total buffer memory, grid resolution, max particles per cell, dispatch groups, solver/buffer status, and overflow warnings.
+- The bounded grid limitation remains documented and visible.
 
 ## Profiles
 
@@ -130,6 +142,8 @@ The scene contains a transparent rectangular box, visible GPU-rendered particles
 ProfessorBenchmark mode allocates and simulates 1,000,000 particles. It is intentionally heavy and may not run smoothly on all GPUs. Rendering is reduced with render stride, but the simulated particle count remains 1,000,000.
 
 The current uniform grid is bounded and understandable, not a final production neighbor-search implementation. Overcrowded grid cells may truncate neighbor checks. Final solver quality should improve when Phase 4 adds compact sorted cell ranges.
+
+The benchmark reports `Grid overflow count`. If this value is nonzero, simulated particles are still present in GPU particle buffers, but some particles were not inserted into the bounded neighbor grid for that frame. This affects SPH quality and is intentionally exposed instead of hidden.
 
 ## Not Implemented Yet
 

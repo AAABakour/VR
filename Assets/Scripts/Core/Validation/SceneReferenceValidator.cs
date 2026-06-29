@@ -7,6 +7,9 @@ public class SceneReferenceValidator : MonoBehaviour
     [Header("Validation")]
     public bool validateOnStart = true;
     public bool autoResolveMissingReferences = true;
+    public bool validateLegacySceneReferences = true;
+    public bool validatePhaseTwoRigReferences = true;
+    public bool validatePhaseThreeFluidBoxReferences = false;
 
     [Header("Expected Scene Objects")]
     public Transform pivotPoint;
@@ -33,6 +36,14 @@ public class SceneReferenceValidator : MonoBehaviour
     public RopeRigSubsystemAdapter ropeRigSubsystemAdapter;
     public BucketRigSubsystemAdapter bucketRigSubsystemAdapter;
 
+    [Header("Phase 3 Fluid Box Systems")]
+    public GpuSphSolver gpuSphSolver;
+    public GpuSphParticleRenderer gpuSphParticleRenderer;
+    public FluidBoxController fluidBoxController;
+    public FluidBoxMotionController fluidBoxMotionController;
+    public FluidBoxBenchmarkController fluidBoxBenchmarkController;
+    public FluidBoxBenchmarkUI fluidBoxBenchmarkUI;
+
     private void Start()
     {
         if (validateOnStart)
@@ -51,26 +62,38 @@ public class SceneReferenceValidator : MonoBehaviour
 
         List<string> warnings = new List<string>();
 
-        RequireReference(warnings, pivotPoint, "PivotPoint transform");
-        RequireReference(warnings, bucket, "Bucket transform");
-        RequireReference(warnings, rope, "Rope transform");
-        RequireReference(warnings, paintNozzle, "PaintNozzle transform");
-        RequireReference(warnings, canvasBoard, "CanvasBoard transform");
-        RequireReference(warnings, simulationManager, "SimulationManager");
-        RequireReference(warnings, paintEmitter, "PaintEmitter");
-        RequireReference(warnings, paintParticleSimulator, "PaintParticleSimulator");
-        RequireReference(warnings, canvasPainter, "CanvasPainter");
-        RequireReference(warnings, mainUI, "MainUI");
-        RequireReference(warnings, eventSystem, "EventSystem");
+        if (validateLegacySceneReferences)
+        {
+            RequireReference(warnings, pivotPoint, "PivotPoint transform");
+            RequireReference(warnings, bucket, "Bucket transform");
+            RequireReference(warnings, rope, "Rope transform");
+            RequireReference(warnings, paintNozzle, "PaintNozzle transform");
+            RequireReference(warnings, canvasBoard, "CanvasBoard transform");
+            RequireReference(warnings, simulationManager, "SimulationManager");
+            RequireReference(warnings, paintEmitter, "PaintEmitter");
+            RequireReference(warnings, paintParticleSimulator, "PaintParticleSimulator");
+            RequireReference(warnings, canvasPainter, "CanvasPainter");
+            RequireReference(warnings, mainUI, "MainUI");
+            RequireReference(warnings, eventSystem, "EventSystem");
 
-        ValidatePendulumReferences(warnings);
-        ValidatePaintReferences(warnings);
-        ValidateManagerReferences(warnings);
-        ValidatePhaseTwoRigReferences(warnings);
+            ValidatePendulumReferences(warnings);
+            ValidatePaintReferences(warnings);
+            ValidateManagerReferences(warnings);
+        }
+
+        if (validatePhaseTwoRigReferences)
+        {
+            ValidatePhaseTwoRigReferences(warnings);
+        }
+
+        if (validatePhaseThreeFluidBoxReferences)
+        {
+            ValidatePhaseThreeFluidBoxReferences(warnings);
+        }
 
         if (warnings.Count == 0)
         {
-            Debug.Log("[SceneReferenceValidator] Required Phase 1 scene references are present.", this);
+            Debug.Log("[SceneReferenceValidator] Requested scene references are present.", this);
             return;
         }
 
@@ -182,6 +205,36 @@ public class SceneReferenceValidator : MonoBehaviour
         {
             bucketRigSubsystemAdapter = Object.FindFirstObjectByType<BucketRigSubsystemAdapter>();
         }
+
+        if (gpuSphSolver == null)
+        {
+            gpuSphSolver = Object.FindFirstObjectByType<GpuSphSolver>();
+        }
+
+        if (gpuSphParticleRenderer == null)
+        {
+            gpuSphParticleRenderer = Object.FindFirstObjectByType<GpuSphParticleRenderer>();
+        }
+
+        if (fluidBoxController == null)
+        {
+            fluidBoxController = Object.FindFirstObjectByType<FluidBoxController>();
+        }
+
+        if (fluidBoxMotionController == null)
+        {
+            fluidBoxMotionController = Object.FindFirstObjectByType<FluidBoxMotionController>();
+        }
+
+        if (fluidBoxBenchmarkController == null)
+        {
+            fluidBoxBenchmarkController = Object.FindFirstObjectByType<FluidBoxBenchmarkController>();
+        }
+
+        if (fluidBoxBenchmarkUI == null)
+        {
+            fluidBoxBenchmarkUI = Object.FindFirstObjectByType<FluidBoxBenchmarkUI>();
+        }
     }
 
     private void ValidatePendulumReferences(List<string> warnings)
@@ -271,6 +324,51 @@ public class SceneReferenceValidator : MonoBehaviour
             RequireReference(warnings, bucketRigSubsystemAdapter.bucketHandleRig, "BucketRigSubsystemAdapter.bucketHandleRig");
             RequireReference(warnings, bucketRigSubsystemAdapter.motionDataProvider, "BucketRigSubsystemAdapter.motionDataProvider");
             RequireReference(warnings, bucketRigSubsystemAdapter.collisionProxy, "BucketRigSubsystemAdapter.collisionProxy");
+        }
+    }
+
+    private void ValidatePhaseThreeFluidBoxReferences(List<string> warnings)
+    {
+        RequireReference(warnings, gpuSphSolver, "GpuSphSolver");
+        RequireReference(warnings, gpuSphParticleRenderer, "GpuSphParticleRenderer");
+        RequireReference(warnings, fluidBoxController, "FluidBoxController");
+        RequireReference(warnings, fluidBoxMotionController, "FluidBoxMotionController");
+        RequireReference(warnings, fluidBoxBenchmarkController, "FluidBoxBenchmarkController");
+        RequireReference(warnings, fluidBoxBenchmarkUI, "FluidBoxBenchmarkUI");
+
+        if (gpuSphSolver != null)
+        {
+            RequireReference(warnings, gpuSphSolver.sphComputeShader, "GpuSphSolver.sphComputeShader");
+            RequireReference(warnings, gpuSphSolver.settingsTemplate, "GpuSphSolver.settingsTemplate");
+            RequireReference(warnings, gpuSphSolver.fluidBox, "GpuSphSolver.fluidBox");
+            RequireReference(warnings, gpuSphSolver.debugStats, "GpuSphSolver.debugStats");
+        }
+
+        if (gpuSphParticleRenderer != null)
+        {
+            RequireReference(warnings, gpuSphParticleRenderer.solver, "GpuSphParticleRenderer.solver");
+            RequireReference(warnings, gpuSphParticleRenderer.fluidBox, "GpuSphParticleRenderer.fluidBox");
+            RequireReference(warnings, gpuSphParticleRenderer.particleMaterial, "GpuSphParticleRenderer.particleMaterial");
+        }
+
+        if (fluidBoxController != null)
+        {
+            RequireReference(warnings, fluidBoxController.glassMaterialTemplate, "FluidBoxController.glassMaterialTemplate");
+        }
+
+        if (fluidBoxBenchmarkController != null)
+        {
+            RequireReference(warnings, fluidBoxBenchmarkController.solver, "FluidBoxBenchmarkController.solver");
+            RequireReference(warnings, fluidBoxBenchmarkController.fluidBox, "FluidBoxBenchmarkController.fluidBox");
+            RequireReference(warnings, fluidBoxBenchmarkController.motionController, "FluidBoxBenchmarkController.motionController");
+            RequireReference(warnings, fluidBoxBenchmarkController.debugStats, "FluidBoxBenchmarkController.debugStats");
+        }
+
+        if (fluidBoxBenchmarkUI != null)
+        {
+            RequireReference(warnings, fluidBoxBenchmarkUI.benchmarkController, "FluidBoxBenchmarkUI.benchmarkController");
+            RequireReference(warnings, fluidBoxBenchmarkUI.stats, "FluidBoxBenchmarkUI.stats");
+            RequireReference(warnings, fluidBoxBenchmarkUI.motionController, "FluidBoxBenchmarkUI.motionController");
         }
     }
 

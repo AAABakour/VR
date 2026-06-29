@@ -14,6 +14,7 @@ public class GpuSphParticleRenderer : MonoBehaviour
     private int cachedRenderedCount = -1;
     private int cachedStride = -1;
     private Material runtimeMaterial;
+    private bool warnedMissingMaterial;
     private static readonly int ParticlesId = Shader.PropertyToID("_Particles");
     private static readonly int RenderStrideId = Shader.PropertyToID("_RenderStride");
     private static readonly int ParticleSizeId = Shader.PropertyToID("_ParticleSize");
@@ -83,6 +84,12 @@ public class GpuSphParticleRenderer : MonoBehaviour
         if (runtimeMaterial != null)
         {
             return runtimeMaterial;
+        }
+
+        if (!warnedMissingMaterial)
+        {
+            warnedMissingMaterial = true;
+            Debug.LogWarning("[GpuSphParticleRenderer] No explicit particle material assigned; falling back to Shader.Find.", this);
         }
 
         Shader shader = Shader.Find("SwingingPaintBucket/SPH/GPU Particle Unlit");

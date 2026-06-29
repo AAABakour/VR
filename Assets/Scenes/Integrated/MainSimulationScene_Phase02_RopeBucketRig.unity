@@ -4537,6 +4537,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SceneReferenceValidator
   validateOnStart: 1
   autoResolveMissingReferences: 1
+  validateLegacySceneReferences: 1
+  validatePhaseTwoRigReferences: 1
+  validatePhaseThreeFluidBoxReferences: 0
   pivotPoint: {fileID: 2117975969}
   bucket: {fileID: 239325978}
   rope: {fileID: 956846883}

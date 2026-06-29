@@ -177,3 +177,14 @@ The duplicated scene has a unique `.meta` GUID and does not reuse the original s
 - The legacy CPU particle simulator is not representative of the future GPU SPH performance target.
 - Profile toggles define intent only; they do not imply a completed GPU solver or rope rig.
 - Unity should regenerate `.meta` files for newly added scripts and documentation that do not already have explicit meta files.
+
+## 11. Phase 3.1 Finalization Notes
+
+Phase 3.1 verified that the Phase 1 architecture remains usable as a foundation:
+
+- `SimulationLifecycleManager` still supports explicit subsystem lists and safe child/scene discovery.
+- `SceneReferenceValidator` now has separate toggles for legacy, Phase 2 rig, and Phase 3 fluid-box validation so each scene can validate only the systems it owns.
+- The original `SimulationManager` and `R` reset behavior remain preserved.
+- The required simulation profiles still live in `Assets/Settings/SimulationProfiles`.
+
+Phase 1 remains a compatibility layer, not a replacement of the original prototype scene.

@@ -12,7 +12,7 @@ public class FluidBoxBenchmarkUI : MonoBehaviour
     public bool autoCreateUi = true;
     public float refreshInterval = 0.15f;
 
-    private readonly StringBuilder builder = new StringBuilder(512);
+    private readonly StringBuilder builder = new StringBuilder(900);
     private float refreshTimer;
 
     private void Awake()
@@ -48,16 +48,25 @@ public class FluidBoxBenchmarkUI : MonoBehaviour
         builder.Clear();
         builder.AppendLine("Fluid Box GPU SPH Benchmark");
         builder.Append("Mode: ").AppendLine(stats.activeMode);
+        builder.AppendLine("Simulated Particles != Rendered Particles");
         builder.Append("Simulated particles: ").AppendLine(stats.simulatedParticleCount.ToString("N0"));
         builder.Append("Rendered particles: ").AppendLine(rendered.ToString("N0"));
         builder.Append("Render stride: ").AppendLine(stats.renderStride.ToString());
-        builder.Append("GPU buffers: ").Append(stats.estimatedGpuMemoryMb.ToString("0.0")).AppendLine(" MB");
+        builder.Append("Particle buffers: ").Append(stats.estimatedParticleBufferMemoryMb.ToString("0.0")).AppendLine(" MB");
+        builder.Append("Grid buffers: ").Append(stats.estimatedGridMemoryMb.ToString("0.0")).AppendLine(" MB");
+        builder.Append("Total GPU buffers: ").Append(stats.estimatedTotalGpuMemoryMb.ToString("0.0")).AppendLine(" MB");
         builder.Append("Grid: ").Append(stats.gridDimensions.x).Append(" x ").Append(stats.gridDimensions.y).Append(" x ").AppendLine(stats.gridDimensions.z.ToString());
+        builder.Append("Max particles/cell: ").AppendLine(stats.maxParticlesPerCell.ToString());
+        builder.Append("Grid overflow count: ").AppendLine(stats.gridOverflowCount.ToString("N0"));
+        builder.Append("Dispatch groups: particles ").Append(stats.particleDispatchGroupCount).Append(", grid ").AppendLine(stats.gridDispatchGroupCount.ToString());
         builder.Append("Bounds: ").Append(stats.boundsSize.x.ToString("0.0")).Append(" x ").Append(stats.boundsSize.y.ToString("0.0")).Append(" x ").AppendLine(stats.boundsSize.z.ToString("0.0"));
         builder.Append("Substeps: ").AppendLine(stats.substeps.ToString());
+        builder.Append("Timestep: ").AppendLine(stats.timestep.ToString("0.0000"));
         builder.Append("Smoothing length: ").AppendLine(stats.smoothingLength.ToString("0.000"));
         builder.Append("Rest density: ").AppendLine(stats.restDensity.ToString("0"));
         builder.Append("Viscosity: ").AppendLine(stats.viscosity.ToString("0.000"));
+        builder.Append("Solver initialized: ").AppendLine(stats.solverInitialized ? "Yes" : "No");
+        builder.Append("Buffers valid: ").AppendLine(stats.buffersValid ? "Yes" : "No");
         builder.Append("FPS: ").AppendLine(stats.fps.ToString("0.0"));
 
         if (motionController != null)
@@ -68,6 +77,11 @@ public class FluidBoxBenchmarkUI : MonoBehaviour
         if (stats.simulatedParticleCount >= 1000000)
         {
             builder.AppendLine("Warning: 1M mode is hardware-heavy; rendered count is intentionally reduced by stride.");
+        }
+
+        if (stats.gridOverflowCount > 0)
+        {
+            builder.AppendLine("Warning: bounded grid overflow occurred; SPH neighbors were truncated.");
         }
 
         statsText.text = builder.ToString();
@@ -148,7 +162,7 @@ public class FluidBoxBenchmarkUI : MonoBehaviour
         panelRect.anchorMax = new Vector2(0f, 1f);
         panelRect.pivot = new Vector2(0f, 1f);
         panelRect.anchoredPosition = new Vector2(16f, -16f);
-        panelRect.sizeDelta = new Vector2(440f, 420f);
+        panelRect.sizeDelta = new Vector2(470f, 560f);
 
         GameObject textObject = new GameObject("StatsText");
         textObject.transform.SetParent(panel.transform, false);
@@ -162,13 +176,13 @@ public class FluidBoxBenchmarkUI : MonoBehaviour
         textRect.offsetMin = new Vector2(14f, 12f);
         textRect.offsetMax = new Vector2(-14f, -12f);
 
-        CreateButton(canvas.transform, "Reset Fluid", new Vector2(16f, -456f), ResetFluid);
-        CreateButton(canvas.transform, "Debug", new Vector2(16f, -500f), ApplyDebugMode);
-        CreateButton(canvas.transform, "Presentation", new Vector2(126f, -500f), ApplyPresentationMode);
-        CreateButton(canvas.transform, "Professor 1M", new Vector2(270f, -500f), ApplyProfessorBenchmarkMode);
-        CreateButton(canvas.transform, "VR Safe", new Vector2(16f, -544f), ApplyVRSafeMode);
-        CreateButton(canvas.transform, "Toggle Motion", new Vector2(126f, -544f), ToggleBoxMotion);
-        CreateButton(canvas.transform, "Cycle Motion", new Vector2(270f, -544f), CycleBoxMotionMode);
+        CreateButton(canvas.transform, "Reset Fluid", new Vector2(16f, -596f), ResetFluid);
+        CreateButton(canvas.transform, "Debug", new Vector2(16f, -640f), ApplyDebugMode);
+        CreateButton(canvas.transform, "Presentation", new Vector2(126f, -640f), ApplyPresentationMode);
+        CreateButton(canvas.transform, "Professor 1M", new Vector2(270f, -640f), ApplyProfessorBenchmarkMode);
+        CreateButton(canvas.transform, "VR Safe", new Vector2(16f, -684f), ApplyVRSafeMode);
+        CreateButton(canvas.transform, "Toggle Motion", new Vector2(126f, -684f), ToggleBoxMotion);
+        CreateButton(canvas.transform, "Cycle Motion", new Vector2(270f, -684f), CycleBoxMotionMode);
     }
 
     private void CreateButton(Transform parent, string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction action)

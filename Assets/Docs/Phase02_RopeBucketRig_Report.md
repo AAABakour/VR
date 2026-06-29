@@ -97,3 +97,18 @@ Not implemented in Phase 2:
 - Fluid-canvas painting rewrite.
 - Production rope physics constraints.
 - Replacement of `SimulationManager`.
+
+## Phase 3.1 Finalization Notes
+
+Phase 3.1 hardened the Phase 2 rig foundation:
+
+- Added lifecycle adapters:
+  - `RopeRigSubsystemAdapter`
+  - `BucketRigSubsystemAdapter`
+- Confirmed execution order:
+  - `BucketMotionDataProvider`: earlier
+  - `BucketHandleRig`: after motion sampling
+  - `RopeRigController`: after handle motion
+- `BucketCollisionProxy` now supports an explicit `nozzlePoint` transform while preserving the fixed local fallback.
+- The Phase 2 scene wires the rope and bucket rig adapters into `SimulationLifecycleManager`.
+- The legacy rope cylinder remains inactive in the Phase 2 scene, and the original main scene remains backward-compatible.
