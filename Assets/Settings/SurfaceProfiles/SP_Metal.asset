@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e7caec00ee86684fa68e14cb37dea6c, type: 3}
+  m_Name: SP_Metal
+  m_EditorClassIdentifier: Assembly-CSharp::PaintSurfaceProfile
+  surfaceName: Canvas
+  absorption: 0.35
+  roughness: 0.55
+  spreadFactor: 1
+  smearFactor: 1
+  splashFactor: 1
+  dripResistance: 0.55
+  dryingSpeed: 0.5
+  wetFriction: 0.45
+  edgeNoise: 1
+  microTextureStrength: 1
+  colorStaining: 0.75
