@@ -24,6 +24,13 @@ public class SceneReferenceValidator : MonoBehaviour
     public CanvasPainter canvasPainter;
     public PendulumController pendulumController;
 
+    [Header("Phase 2 Rig Systems")]
+    public RopeRigController ropeRigController;
+    public BucketRigController bucketRigController;
+    public BucketHandleRig bucketHandleRig;
+    public BucketMotionDataProvider bucketMotionDataProvider;
+    public BucketCollisionProxy bucketCollisionProxy;
+
     private void Start()
     {
         if (validateOnStart)
@@ -57,6 +64,7 @@ public class SceneReferenceValidator : MonoBehaviour
         ValidatePendulumReferences(warnings);
         ValidatePaintReferences(warnings);
         ValidateManagerReferences(warnings);
+        ValidatePhaseTwoRigReferences(warnings);
 
         if (warnings.Count == 0)
         {
@@ -137,6 +145,31 @@ public class SceneReferenceValidator : MonoBehaviour
         {
             pendulumController = Object.FindFirstObjectByType<PendulumController>();
         }
+
+        if (ropeRigController == null)
+        {
+            ropeRigController = Object.FindFirstObjectByType<RopeRigController>();
+        }
+
+        if (bucketRigController == null)
+        {
+            bucketRigController = Object.FindFirstObjectByType<BucketRigController>();
+        }
+
+        if (bucketHandleRig == null)
+        {
+            bucketHandleRig = Object.FindFirstObjectByType<BucketHandleRig>();
+        }
+
+        if (bucketMotionDataProvider == null)
+        {
+            bucketMotionDataProvider = Object.FindFirstObjectByType<BucketMotionDataProvider>();
+        }
+
+        if (bucketCollisionProxy == null)
+        {
+            bucketCollisionProxy = Object.FindFirstObjectByType<BucketCollisionProxy>();
+        }
     }
 
     private void ValidatePendulumReferences(List<string> warnings)
@@ -180,6 +213,40 @@ public class SceneReferenceValidator : MonoBehaviour
         RequireReference(warnings, simulationManager.pendulumController, "SimulationManager.pendulumController");
         RequireReference(warnings, simulationManager.paintEmitter, "SimulationManager.paintEmitter");
         RequireReference(warnings, simulationManager.canvasPainter, "SimulationManager.canvasPainter");
+    }
+
+    private void ValidatePhaseTwoRigReferences(List<string> warnings)
+    {
+        if (ropeRigController != null)
+        {
+            RequireReference(warnings, ropeRigController.startPoint, "RopeRigController.startPoint");
+            RequireReference(warnings, ropeRigController.endPoint, "RopeRigController.endPoint");
+        }
+
+        if (bucketRigController != null)
+        {
+            RequireReference(warnings, bucketRigController.bucketRoot, "BucketRigController.bucketRoot");
+            RequireReference(warnings, bucketRigController.ropeAttachPoint, "BucketRigController.ropeAttachPoint");
+            RequireReference(warnings, bucketRigController.nozzlePoint, "BucketRigController.nozzlePoint");
+            RequireReference(warnings, bucketRigController.motionDataProvider, "BucketRigController.motionDataProvider");
+            RequireReference(warnings, bucketRigController.bucketCollisionProxy, "BucketRigController.bucketCollisionProxy");
+        }
+
+        if (bucketHandleRig != null)
+        {
+            RequireReference(warnings, bucketHandleRig.bucketRoot, "BucketHandleRig.bucketRoot");
+            RequireReference(warnings, bucketHandleRig.handlePivot, "BucketHandleRig.handlePivot");
+        }
+
+        if (bucketMotionDataProvider != null)
+        {
+            RequireReference(warnings, bucketMotionDataProvider.bucketTransform, "BucketMotionDataProvider.bucketTransform");
+        }
+
+        if (bucketCollisionProxy != null)
+        {
+            RequireReference(warnings, bucketCollisionProxy.bucketRoot, "BucketCollisionProxy.bucketRoot");
+        }
     }
 
     private void RequireReference(List<string> warnings, Object reference, string label)

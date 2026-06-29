@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: Profile_VRSafe
   m_EditorClassIdentifier: 
   mode: 4
-  targetParticleCount: 600
-  renderStride: 2
-  maxImpactEventsPerFrame: 24
-  enableLegacyParticleSystem: 1
-  enableGpuSph: 0
-  enableRopeRig: 0
+  targetParticleCount: 100000
+  renderStride: 4
+  maxImpactEventsPerFrame: 128
+  enableLegacyParticleSystem: 0
+  enableGpuSph: 1
+  enableRopeRig: 1
   enableDebugVisuals: 0
-  description: Conservative profile for VR-safe iteration with reduced presentation overhead.
+  description: Conservative VR-safe target for future GPU SPH with reduced particle density, limited impact events, and no debug overlay cost.

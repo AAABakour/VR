@@ -38,6 +38,7 @@ public class PendulumController : MonoBehaviour
     public float torsionDamping = 1.8f;
 
     [Header("Visual Settings")]
+    public bool updateLegacyRopeVisual = true;
     public float ropeThickness = 0.03f;
 
     private float angleX;
@@ -195,7 +196,7 @@ public class PendulumController : MonoBehaviour
 
     private void UpdateVisuals(float dt)
     {
-        if (pivotPoint == null || bucket == null || rope == null)
+        if (pivotPoint == null || bucket == null)
         {
             return;
         }
@@ -248,7 +249,10 @@ public class PendulumController : MonoBehaviour
             ? ropeAttachPoint.position
             : bucketPosition;
 
-        UpdateRopeVisual(pivotPosition, ropeEndPosition);
+        if (updateLegacyRopeVisual && rope != null)
+        {
+            UpdateRopeVisual(pivotPosition, ropeEndPosition);
+        }
     }
 
     private void UpdateBucketRotation()
@@ -264,7 +268,7 @@ public class PendulumController : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (pivotPoint == null || rope == null)
+        if (!updateLegacyRopeVisual || pivotPoint == null || rope == null || bucket == null)
         {
             return;
         }

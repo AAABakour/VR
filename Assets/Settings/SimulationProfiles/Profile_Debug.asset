@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: Profile_Debug
   m_EditorClassIdentifier: 
   mode: 1
-  targetParticleCount: 900
+  targetParticleCount: 50000
   renderStride: 1
-  maxImpactEventsPerFrame: 48
-  enableLegacyParticleSystem: 1
-  enableGpuSph: 0
-  enableRopeRig: 0
+  maxImpactEventsPerFrame: 128
+  enableLegacyParticleSystem: 0
+  enableGpuSph: 1
+  enableRopeRig: 1
   enableDebugVisuals: 1
-  description: Diagnostic profile for stepping through the legacy prototype with a modest particle budget.
+  description: Diagnostic future-SPH profile with full update cadence, rig gizmos, and enough particles for debugging solver behavior without presentation-scale pressure.

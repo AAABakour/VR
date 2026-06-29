@@ -18,6 +18,6 @@ MonoBehaviour:
   maxImpactEventsPerFrame: 64
   enableLegacyParticleSystem: 1
   enableGpuSph: 0
-  enableRopeRig: 0
+  enableRopeRig: 1
   enableDebugVisuals: 1
-  description: Current prototype baseline that preserves the existing legacy bucket, paint, and canvas behavior.
+  description: Current prototype baseline. Keeps the legacy paint stack active while allowing the Phase 2 rope and bucket rigs to mirror the existing pendulum motion.

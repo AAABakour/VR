@@ -1,6 +1,6 @@
 # Architecture Map
 
-This map describes the intended project structure after Phase 1. It separates current legacy prototype behavior from future production systems.
+This map describes the project structure after Phase 2. It separates current legacy prototype behavior from the new rope, bucket, and future fluid simulation architecture.
 
 ## Core
 
@@ -14,7 +14,7 @@ Purpose:
 - Reset/pause/profile lifecycle contracts.
 - Simulation-wide validation and mode/profile definitions.
 
-Current Phase 1 files:
+Current files:
 
 - `Core/Architecture/ISimulationSubsystem.cs`
 - `Core/Architecture/SimulationLifecycleManager.cs`
@@ -29,7 +29,7 @@ Location:
 
 - `Assets/Scripts/RopeRig`
 
-Future responsibility:
+Responsibility:
 
 - Chain or rope segment rig.
 - Constraint setup.
@@ -38,7 +38,10 @@ Future responsibility:
 
 Current status:
 
-- Folder prepared only. The current rope cylinder remains controlled by `PendulumController`.
+- Phase 2 implements `RopeRigMode`, `RopeRigSegment`, and `RopeRigController`.
+- The Phase 2 integration scene uses `RopeRig` to connect `PivotPoint` to `Bucket/HandlePivot/RopeAttachPoint`.
+- The old single-cylinder rope is disabled only in the Phase 2 scene.
+- The rig is currently visual/architectural; production rope constraints are deferred.
 
 ## Bucket
 
@@ -46,7 +49,7 @@ Location:
 
 - `Assets/Scripts/Bucket`
 
-Future responsibility:
+Responsibility:
 
 - Bucket body rig.
 - Nozzle/handle attachment metadata.
@@ -54,7 +57,10 @@ Future responsibility:
 
 Current status:
 
-- Folder prepared only. Current bucket motion still comes from `PendulumController`.
+- Phase 2 implements `BucketRigController`, `BucketMotionDataProvider`, `BucketCollisionProxy`, and `BucketHandleRig`.
+- Current bucket motion still comes from `PendulumController`.
+- The bucket rig centralizes body, handle, rope attach, nozzle, motion, and collision proxy references for later SPH phases.
+- The legacy `BucketHandleMotion` component is disabled only in the Phase 2 scene so `BucketHandleRig` owns handle motion there.
 
 ## SPH
 
@@ -190,8 +196,17 @@ Phase 1 duplicated integration scene:
 
 - `Assets/Scenes/Integrated/MainSimulationScene_Phase01_Architecture.unity`
 
+Phase 2 duplicated integration scene:
+
+- `Assets/Scenes/Integrated/MainSimulationScene_Phase02_RopeBucketRig.unity`
+
 Future benchmark location:
 
 - `Assets/Scenes/Benchmarks`
 
-The benchmark folder is prepared for Phase 3. No benchmark scene was created in Phase 1.
+The benchmark folder is prepared for Phase 3. No benchmark scene was created in Phase 2.
+
+## Phase Reports
+
+- `Assets/Docs/Phase01_Architecture_Report.md`
+- `Assets/Docs/Phase02_RopeBucketRig_Report.md`

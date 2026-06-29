@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: Profile_Presentation
   m_EditorClassIdentifier: 
   mode: 2
-  targetParticleCount: 1200
-  renderStride: 2
-  maxImpactEventsPerFrame: 32
-  enableLegacyParticleSystem: 1
-  enableGpuSph: 0
-  enableRopeRig: 0
+  targetParticleCount: 250000
+  renderStride: 5
+  maxImpactEventsPerFrame: 256
+  enableLegacyParticleSystem: 0
+  enableGpuSph: 1
+  enableRopeRig: 1
   enableDebugVisuals: 0
-  description: Cleaner presentation profile for showing the prototype without the heavier debug overlays.
+  description: Presentation target for Phase 3+ GPU SPH with stable visual density, throttled rendering, and debug overlays disabled.

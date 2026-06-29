@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: Profile_ProfessorBenchmark
   m_EditorClassIdentifier: 
   mode: 3
-  targetParticleCount: 2400
-  renderStride: 4
-  maxImpactEventsPerFrame: 96
-  enableLegacyParticleSystem: 1
-  enableGpuSph: 0
-  enableRopeRig: 0
+  targetParticleCount: 1000000
+  renderStride: 10
+  maxImpactEventsPerFrame: 512
+  enableLegacyParticleSystem: 0
+  enableGpuSph: 1
+  enableRopeRig: 1
   enableDebugVisuals: 1
-  description: Stress-oriented benchmark profile for measuring the legacy stack before the GPU solver arrives.
+  description: Benchmark target for professor demonstrations and stress testing. Intended for GPU SPH performance measurement, solver validation, and repeatable metrics.
