@@ -32,6 +32,10 @@ Shader "SwingingPaintBucket/SPH/GPU Particle Unlit"
                 float3 velocity;
                 float density;
                 float pressure;
+                float active;
+                float age;
+                float lifetime;
+                float seed;
             };
 
             StructuredBuffer<ParticleState> _Particles;
@@ -47,6 +51,7 @@ Shader "SwingingPaintBucket/SPH/GPU Particle Unlit"
                 float4 positionCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float speed : TEXCOORD1;
+                float active : TEXCOORD2;
             };
 
             Varyings vert(uint vertexId : SV_VertexID)
@@ -66,6 +71,16 @@ Shader "SwingingPaintBucket/SPH/GPU Particle Unlit"
                 };
 
                 ParticleState particle = _Particles[particleIndex];
+                if (particle.active < 0.5)
+                {
+                    Varyings inactiveOutput;
+                    inactiveOutput.positionCS = float4(0.0, 0.0, 0.0, 1.0);
+                    inactiveOutput.uv = float2(0.0, 0.0);
+                    inactiveOutput.speed = 0.0;
+                    inactiveOutput.active = 0.0;
+                    return inactiveOutput;
+                }
+
                 float3 worldPosition = mul(_BoxLocalToWorld, float4(particle.position, 1.0)).xyz;
                 float2 corner = corners[cornerId];
                 worldPosition += (_CameraRight * corner.x + _CameraUp * corner.y) * _ParticleSize;
@@ -74,11 +89,13 @@ Shader "SwingingPaintBucket/SPH/GPU Particle Unlit"
                 output.positionCS = TransformWorldToHClip(worldPosition);
                 output.uv = corner * 0.5 + 0.5;
                 output.speed = length(particle.velocity);
+                output.active = particle.active;
                 return output;
             }
 
             half4 frag(Varyings input) : SV_Target
             {
+                clip(input.active - 0.5);
                 float2 centered = input.uv * 2.0 - 1.0;
                 float d = dot(centered, centered);
                 clip(1.0 - d);

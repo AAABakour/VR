@@ -19,6 +19,10 @@ struct ParticleState
     float3 velocity;
     float density;
     float pressure;
+    float active;
+    float age;
+    float lifetime;
+    float seed;
 };
 
 RWStructuredBuffer<ParticleState> _Particles;
@@ -26,6 +30,7 @@ RWStructuredBuffer<float3> _Forces;
 RWStructuredBuffer<int> _CellCounts;
 RWStructuredBuffer<int> _CellParticles;
 RWStructuredBuffer<int> _OverflowCounters;
+RWStructuredBuffer<int> _LifecycleCounters;
 
 int _ParticleCount;
 int _GridCellCount;
@@ -63,9 +68,11 @@ float3 _EmitterInheritedVelocity;
 float _EmitterRadius;
 float _EmitterSpeed;
 float _EmitterSpread;
+float _EmitterLifetime;
 int _EmitterStartIndex;
 int _EmitCount;
 int _EmitterSeed;
+int _DeactivateOutOfBounds;
 
 uint Hash(uint x)
 {
@@ -198,6 +205,10 @@ void InitializeParticles(uint3 id : SV_DispatchThreadID)
     particle.velocity = 0.0;
     particle.density = _RestDensity;
     particle.pressure = 0.0;
+    particle.active = 1.0;
+    particle.age = 0.0;
+    particle.lifetime = 1000000.0;
+    particle.seed = (float)index;
     _Particles[index] = particle;
     _Forces[index] = 0.0;
 }
@@ -228,6 +239,10 @@ void InitializeBucketVolume(uint3 id : SV_DispatchThreadID)
     particle.velocity = 0.0;
     particle.density = _RestDensity;
     particle.pressure = 0.0;
+    particle.active = 1.0;
+    particle.age = 0.0;
+    particle.lifetime = 1000000.0;
+    particle.seed = (float)index;
     _Particles[index] = particle;
     _Forces[index] = 0.0;
 }
@@ -241,25 +256,15 @@ void InitializeNozzleEmission(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    float directionLength = length(_EmitterDirection);
-    float3 direction = directionLength > 0.001 ? _EmitterDirection / directionLength : float3(0.0, -1.0, 0.0);
-    if (length(direction) < 0.001)
-    {
-        direction = float3(0.0, -1.0, 0.0);
-    }
-
-    float3 right;
-    float3 up;
-    BasisFromDirection(direction, right, up);
-    float angle = Random01(index * 41u + 7u) * PI * 2.0;
-    float radius = sqrt(Random01(index * 313u + 11u)) * max(_BucketNozzleRadius, _ParticleRadius);
-    float streamOffset = (float)(index % 96u) * max(_ParticleRadius * 1.6, _InitialSpacing * 0.5);
-
     ParticleState particle;
-    particle.position = _BucketNozzleLocalPosition + right * cos(angle) * radius + up * sin(angle) * radius + direction * streamOffset;
-    particle.velocity = direction * max(_EmitterSpeed, 0.5) + RandomUnitVector(index + 23u) * _EmitterSpread;
+    particle.position = float3(0.0, -9999.0, 0.0);
+    particle.velocity = 0.0;
     particle.density = _RestDensity;
     particle.pressure = 0.0;
+    particle.active = 0.0;
+    particle.age = 0.0;
+    particle.lifetime = max(_EmitterLifetime, 0.1);
+    particle.seed = (float)index;
     _Particles[index] = particle;
     _Forces[index] = 0.0;
 }
@@ -278,6 +283,8 @@ void ClearGrid(uint3 id : SV_DispatchThreadID)
     if (index == 0)
     {
         _OverflowCounters[0] = 0;
+        _LifecycleCounters[0] = 0;
+        _LifecycleCounters[1] = 0;
     }
 }
 
@@ -310,6 +317,12 @@ void CollideBounds(inout ParticleState particle, float3 boundsSize)
 bool IsNearNozzle(float3 position)
 {
     return distance(position, _BucketNozzleLocalPosition) <= max(_BucketNozzleRadius, _ParticleRadius) * 1.75;
+}
+
+bool IsOutsideBounds(float3 position, float3 boundsSize, float margin)
+{
+    float3 halfBounds = boundsSize * 0.5 + margin;
+    return any(position < -halfBounds) || any(position > halfBounds);
 }
 
 void CollideBucket(inout ParticleState particle)
@@ -362,6 +375,13 @@ void BuildGrid(uint3 id : SV_DispatchThreadID)
     }
 
     ParticleState particle = _Particles[index];
+    if (particle.active < 0.5)
+    {
+        InterlockedAdd(_LifecycleCounters[1], 1);
+        return;
+    }
+
+    InterlockedAdd(_LifecycleCounters[0], 1);
     int cellIndex = CellIndexFromCoord(CellCoordFromPosition(particle.position));
     int slot;
     InterlockedAdd(_CellCounts[cellIndex], 1, slot);
@@ -386,6 +406,14 @@ void ComputeDensityPressure(uint3 id : SV_DispatchThreadID)
     }
 
     ParticleState particle = _Particles[index];
+    if (particle.active < 0.5)
+    {
+        particle.density = _RestDensity;
+        particle.pressure = 0.0;
+        _Particles[index] = particle;
+        return;
+    }
+
     int3 baseCoord = CellCoordFromPosition(particle.position);
     float density = 0.0;
 
@@ -407,6 +435,11 @@ void ComputeDensityPressure(uint3 id : SV_DispatchThreadID)
                 {
                     int neighborIndex = _CellParticles[cellIndex * _MaxParticlesPerCell + i];
                     ParticleState neighbor = _Particles[neighborIndex];
+                    if (neighbor.active < 0.5)
+                    {
+                        continue;
+                    }
+
                     float3 delta = particle.position - neighbor.position;
                     density += _ParticleMass * Poly6(dot(delta, delta), _SmoothingLength);
                 }
@@ -429,6 +462,12 @@ void ComputeForces(uint3 id : SV_DispatchThreadID)
     }
 
     ParticleState particle = _Particles[index];
+    if (particle.active < 0.5)
+    {
+        _Forces[index] = 0.0;
+        return;
+    }
+
     int3 baseCoord = CellCoordFromPosition(particle.position);
     float3 pressureForce = 0.0;
     float3 viscosityForce = 0.0;
@@ -456,6 +495,11 @@ void ComputeForces(uint3 id : SV_DispatchThreadID)
                     }
 
                     ParticleState neighbor = _Particles[neighborIndex];
+                    if (neighbor.active < 0.5)
+                    {
+                        continue;
+                    }
+
                     float3 delta = particle.position - neighbor.position;
                     float distance = length(delta);
                     if (distance >= _SmoothingLength || distance <= 0.00001)
@@ -485,6 +529,22 @@ void Integrate(uint3 id : SV_DispatchThreadID)
     }
 
     ParticleState particle = _Particles[index];
+    if (particle.active < 0.5)
+    {
+        _Forces[index] = 0.0;
+        return;
+    }
+
+    particle.age += _DeltaTime;
+    if (particle.age > particle.lifetime)
+    {
+        particle.active = 0.0;
+        particle.velocity = 0.0;
+        _Particles[index] = particle;
+        _Forces[index] = 0.0;
+        return;
+    }
+
     float3 acceleration = _Forces[index] / max(particle.density, 0.0001);
     particle.velocity += acceleration * _DeltaTime;
     particle.velocity *= 1.0 - saturate(_Damping);
@@ -496,6 +556,12 @@ void Integrate(uint3 id : SV_DispatchThreadID)
     }
 
     particle.position += particle.velocity * _DeltaTime;
+    if (_DeactivateOutOfBounds != 0 && IsOutsideBounds(particle.position, _BoundsSize, max(_ParticleRadius * 4.0, 0.05)))
+    {
+        particle.active = 0.0;
+        particle.velocity = 0.0;
+    }
+
     _Particles[index] = particle;
 }
 
@@ -530,8 +596,17 @@ void EmitFromNozzle(uint3 id : SV_DispatchThreadID)
     particle.velocity = _EmitterInheritedVelocity + direction * _EmitterSpeed + randomSpread;
     particle.density = _RestDensity;
     particle.pressure = 0.0;
+    particle.active = 1.0;
+    particle.age = 0.0;
+    particle.lifetime = max(_EmitterLifetime, 0.1);
+    particle.seed = (float)seed;
     _Particles[index] = particle;
     _Forces[index] = 0.0;
+
+    if (emitIndex == 0)
+    {
+        InterlockedAdd(_LifecycleCounters[2], _EmitCount);
+    }
 }
 
 [numthreads(THREADS, 1, 1)]
@@ -544,6 +619,11 @@ void HandleBoxCollisions(uint3 id : SV_DispatchThreadID)
     }
 
     ParticleState particle = _Particles[index];
+    if (particle.active < 0.5)
+    {
+        return;
+    }
+
     Collide(particle);
     _Particles[index] = particle;
 }
@@ -558,6 +638,11 @@ void HandleBucketCollisions(uint3 id : SV_DispatchThreadID)
     }
 
     ParticleState particle = _Particles[index];
+    if (particle.active < 0.5)
+    {
+        return;
+    }
+
     CollideBucket(particle);
     _Particles[index] = particle;
 }

@@ -3125,7 +3125,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1736753278
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4929,8 +4929,8 @@ MonoBehaviour:
   fluidBox: {fileID: 0}
   particleMaterial: {fileID: 2100000, guid: 0d2ef2dc083d411a958d0d42950ce17e, type: 2}
   renderCamera: {fileID: 330585545}
-  particleSize: 0.075
-  particleColor: {r: 0.08, g: 0.92, b: 1, a: 0.94}
+  particleSize: 0.018
+  particleColor: {r: 1, g: 0.26, b: 0.07, a: 0.9}
 --- !u!114 &4200000004
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4988,13 +4988,14 @@ MonoBehaviour:
   disableLegacyPaintOnStart: 1
   legacyPaintEmitter: {fileID: 823100763}
   legacyPaintParticleSimulator: {fileID: 823100764}
-  defaultInheritedBucketVelocity: 0.55
+  defaultInheritedBucketVelocity: 0.65
+  bucketNozzleDemoProfile: {fileID: 11400000, guid: 3bfa950f36ea4ed3b49eb7f436750af1, type: 2}
   legacyPrototypeProfile: {fileID: 11400000, guid: a54b3b165b6a49aeba6c2dfb3130a181, type: 2}
   debugProfile: {fileID: 11400000, guid: 54752664c7aa4309814410e89d851e81, type: 2}
   presentationProfile: {fileID: 11400000, guid: c99b6025103542379b83b7da75a59f50, type: 2}
   professorBenchmarkProfile: {fileID: 11400000, guid: 6bc3de8702b34a6289814fee9c3381c6, type: 2}
   vrSafeProfile: {fileID: 11400000, guid: 801893ddf9cd4765aa3c0c7eb20c265e, type: 2}
-  startupProfile: {fileID: 11400000, guid: 54752664c7aa4309814410e89d851e81, type: 2}
+  startupProfile: {fileID: 11400000, guid: 3bfa950f36ea4ed3b49eb7f436750af1, type: 2}
 --- !u!114 &4200000007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5057,12 +5058,13 @@ MonoBehaviour:
   bucketMotionDataProvider: {fileID: 4100000003}
   nozzlePoint: {fileID: 823100762}
   emitOnUpdate: 0
-  particlesPerSecond: 6200
-  maxParticlesPerFrame: 4096
-  nozzleRadius: 0.055
-  emissionSpeed: 3.1
-  velocitySpread: 0.55
-  inheritedBucketVelocity: 0.55
+  particlesPerSecond: 850
+  maxParticlesPerFrame: 256
+  nozzleRadius: 0.024
+  emissionSpeed: 2.45
+  velocitySpread: 0.11
+  inheritedBucketVelocity: 0.65
+  particleLifetime: 3
   allowNozzleExit: 1
 --- !u!1 &4200000200
 GameObject:

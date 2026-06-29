@@ -23,6 +23,7 @@ public class BucketSphFluidController : MonoBehaviour
     public float defaultInheritedBucketVelocity = 0.55f;
 
     [Header("Profiles")]
+    public SimulationProfile bucketNozzleDemoProfile;
     public SimulationProfile legacyPrototypeProfile;
     public SimulationProfile debugProfile;
     public SimulationProfile presentationProfile;
@@ -59,7 +60,7 @@ public class BucketSphFluidController : MonoBehaviour
         if (initializeOnStart)
         {
             SetMode(startupMode, false);
-            ApplyProfile(startupProfile != null ? startupProfile : debugProfile);
+            ApplyProfile(startupProfile != null ? startupProfile : bucketNozzleDemoProfile);
         }
     }
 
@@ -288,6 +289,16 @@ public class BucketSphFluidController : MonoBehaviour
     public void ApplyDebugProfile()
     {
         UseDebugProfile();
+    }
+
+    public void UseBucketNozzleDemoProfile()
+    {
+        ApplyProfile(bucketNozzleDemoProfile != null ? bucketNozzleDemoProfile : debugProfile);
+    }
+
+    public void ApplyBucketNozzleDemoProfile()
+    {
+        UseBucketNozzleDemoProfile();
     }
 
     public void UsePresentationProfile()

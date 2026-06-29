@@ -2,7 +2,7 @@ using UnityEngine;
 
 public static class GpuSphBufferUtility
 {
-    public const int ParticleStrideBytes = 32;
+    public const int ParticleStrideBytes = 48;
     public const int ForceStrideBytes = 12;
     public const int IntStrideBytes = 4;
     public const int IndirectArgsStrideBytes = 4;

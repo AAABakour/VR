@@ -3,6 +3,9 @@ using UnityEngine;
 public class GpuSphDebugStats : MonoBehaviour
 {
     public int simulatedParticleCount;
+    public int activeParticleCount;
+    public int inactiveParticleCount;
+    public int totalEmittedParticleCount;
     public int renderedParticleCount;
     public int renderStride;
     public float estimatedGpuMemoryMb;
@@ -10,6 +13,8 @@ public class GpuSphDebugStats : MonoBehaviour
     public float estimatedGridMemoryMb;
     public float estimatedTotalGpuMemoryMb;
     public string activeMode;
+    public string simulationDomain;
+    public string simulationFrame;
     public Vector3Int gridDimensions;
     public Vector3 boundsSize;
     public int maxParticlesPerCell;
@@ -23,6 +28,7 @@ public class GpuSphDebugStats : MonoBehaviour
     public float viscosity;
     public bool solverInitialized;
     public bool buffersValid;
+    public float emitterLifetime;
     public float fps;
 
     private float fpsAccumulator;
@@ -57,6 +63,9 @@ public class GpuSphDebugStats : MonoBehaviour
         }
 
         simulatedParticleCount = solver.ParticleCount;
+        activeParticleCount = solver.ActiveParticleCount;
+        inactiveParticleCount = solver.InactiveParticleCount;
+        totalEmittedParticleCount = solver.TotalEmittedParticleCount;
         renderedParticleCount = solver.RenderedParticleCount;
         renderStride = solver.RenderStride;
         estimatedGpuMemoryMb = solver.EstimatedGpuMemoryMb;
@@ -64,6 +73,8 @@ public class GpuSphDebugStats : MonoBehaviour
         estimatedGridMemoryMb = solver.EstimatedGridMemoryMb;
         estimatedTotalGpuMemoryMb = solver.EstimatedTotalGpuMemoryMb;
         activeMode = solver.ActiveModeLabel;
+        simulationDomain = solver.SimulationDomainLabel;
+        simulationFrame = solver.SimulationFrameLabel;
         gridDimensions = solver.GridDimensions;
         boundsSize = solver.BoundsSize;
         maxParticlesPerCell = solver.MaxParticlesPerCell;
@@ -77,5 +88,6 @@ public class GpuSphDebugStats : MonoBehaviour
         viscosity = solver.Viscosity;
         solverInitialized = solver.IsInitialized;
         buffersValid = solver.BuffersValid;
+        emitterLifetime = solver.LastEmitterLifetime;
     }
 }

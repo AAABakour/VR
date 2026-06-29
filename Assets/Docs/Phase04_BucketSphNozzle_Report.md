@@ -156,6 +156,55 @@ Known Phase 4.2 limitations:
 
 Canvas painting remains Phase 5 work.
 
+## Phase 4.3 Active Particle Lifecycle and Demo Calibration
+
+Phase 4.2 corrected world-space emission, but the demo still looked wrong because `NozzleEmission` initialized too many visible particles at once. The result was a large colored cloud instead of a controlled stream from the bucket nozzle.
+
+Phase 4.3 adds active particle lifecycle data to the GPU particle state:
+
+- `active`
+- `age`
+- `lifetime`
+- `seed`
+
+Lifecycle behavior:
+
+- `FluidBox` and `InternalBucketFluid` initialize particles as active.
+- `NozzleEmission` initializes the allocated buffer as inactive.
+- `EmitFromNozzle` activates particles from a GPU ring buffer.
+- Activated particles receive nozzle position, inherited bucket velocity, nozzle velocity, spread, age `0`, and a configurable lifetime.
+- Inactive particles are skipped by `BuildGrid`, `ComputeDensityPressure`, `ComputeForces`, `Integrate`, and collision kernels.
+- Inactive particles are clipped by the particle render shader, so allocated but unused buffer slots do not become a visible cloud.
+- Only compact counters are read back: active count, inactive count, total emitted count, and grid overflow count.
+
+The default Phase 4 demo profile is now `Profile_BucketNozzleDemo`:
+
+- 20,000 allocated particles.
+- Render stride `1`.
+- Small particle radius and smoothing length for a readable nozzle stream.
+- Open-world/root bounds sized around the swinging bucket.
+
+The Phase 4 scene is calibrated for a narrow paint-like stream:
+
+- Default mode: `NozzleEmission`.
+- Default profile: `BucketNozzleDemo`.
+- Particle size: small billboard particles instead of large blobs.
+- Default color: orange/red paint.
+- Emission rate: moderate, with short particle lifetime.
+- Legacy CPU paint UI is hidden so the viewer does not confuse CPU paint particle counts with GPU SPH counts.
+
+Testing:
+
+- Press Play in `MainSimulationScene_Phase04_BucketSphNozzle.unity`.
+- Press `2` and `R` to restart the nozzle stream.
+- Press `1` and `R` to test internal bucket-local fluid.
+- Press `F3` to test the Professor 1M profile; render stride remains supported.
+- Press `E` to toggle nozzle emission.
+
+`InternalAndEmission` remains postponed. Correct simultaneous internal bucket-local SPH and external world-space emission should use a two-solver or mixed-domain architecture later. Phase 4.3 does not fake that feature.
+
+Canvas impacts and canvas painting are still Phase 5 work.
+
 ## Phase 5 Focus
 
 Phase 5 should add sparse GPU impact extraction and a controlled bridge from SPH impacts to canvas painting. That work should avoid full particle readback, avoid CPU particle loops, and keep legacy painting available until visual parity is proven.

@@ -22,6 +22,8 @@ public class BucketSphNozzleEmitter : MonoBehaviour
     public float velocitySpread = 0.45f;
     [Range(0f, 1f)]
     public float inheritedBucketVelocity = 0.55f;
+    [Min(0.1f)]
+    public float particleLifetime = 3f;
     public bool allowNozzleExit = true;
 
     private float emissionAccumulator;
@@ -124,6 +126,7 @@ public class BucketSphNozzleEmitter : MonoBehaviour
             nozzleRadius,
             emissionSpeed,
             velocitySpread,
+            particleLifetime,
             allowNozzleExit
         );
 

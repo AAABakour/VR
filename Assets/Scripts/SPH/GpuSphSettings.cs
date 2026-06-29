@@ -80,6 +80,19 @@ public class GpuSphSettings : ScriptableObject
 
         switch (profile.mode)
         {
+            case SimulationMode.BucketNozzleDemo:
+                particleRadius = 0.012f;
+                smoothingLength = 0.055f;
+                particleMass = 0.008f;
+                stiffness = 180f;
+                viscosity = 0.05f;
+                damping = 0.012f;
+                maxVelocity = 7f;
+                boundsSize = new Vector3(6f, 5f, 5f);
+                maxParticlesPerCell = Mathf.Max(maxParticlesPerCell, 96);
+                substeps = 2;
+                timestep = 0.004f;
+                break;
             case SimulationMode.Debug:
                 substeps = 2;
                 timestep = 0.004f;

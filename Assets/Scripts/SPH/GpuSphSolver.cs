@@ -30,6 +30,7 @@ public class GpuSphSolver : MonoBehaviour
     private ComputeBuffer cellCountsBuffer;
     private ComputeBuffer cellParticlesBuffer;
     private ComputeBuffer overflowCountersBuffer;
+    private ComputeBuffer lifecycleCountersBuffer;
 
     private GpuSphSettings runtimeSettings;
     private int initializeKernel;
@@ -58,8 +59,13 @@ public class GpuSphSolver : MonoBehaviour
     private int particleDispatchGroupCount;
     private int gridDispatchGroupCount;
     private int gridOverflowCount;
+    private int activeParticleCount;
+    private int inactiveParticleCount;
+    private int totalEmittedParticleCount;
+    private float lastEmitterLifetime = 3f;
     private int emissionWriteIndex;
     private readonly int[] overflowReadbackScratch = new int[1];
+    private readonly int[] lifecycleReadbackScratch = new int[3];
     private float overflowReadbackTimer;
     private bool initialized;
     private bool kernelsReady;
@@ -215,6 +221,44 @@ public class GpuSphSolver : MonoBehaviour
         get { return gridOverflowCount; }
     }
 
+    public int ActiveParticleCount
+    {
+        get { return activeParticleCount; }
+    }
+
+    public int InactiveParticleCount
+    {
+        get { return inactiveParticleCount; }
+    }
+
+    public int TotalEmittedParticleCount
+    {
+        get { return totalEmittedParticleCount; }
+    }
+
+    public float LastEmitterLifetime
+    {
+        get { return lastEmitterLifetime; }
+    }
+
+    public string SimulationFrameLabel
+    {
+        get
+        {
+            switch (simulationDomain)
+            {
+                case GpuSphSimulationDomain.BucketCylinder:
+                    return "Bucket local";
+                case GpuSphSimulationDomain.OpenWorldWithBounds:
+                    return "Open world/root";
+                case GpuSphSimulationDomain.FluidBox:
+                    return "Fluid box";
+                default:
+                    return "Unknown";
+            }
+        }
+    }
+
     public int ParticleDispatchGroupCount
     {
         get { return particleDispatchGroupCount; }
@@ -238,7 +282,8 @@ public class GpuSphSolver : MonoBehaviour
                 forceBuffer != null &&
                 cellCountsBuffer != null &&
                 cellParticlesBuffer != null &&
-                overflowCountersBuffer != null;
+                overflowCountersBuffer != null &&
+                lifecycleCountersBuffer != null;
         }
     }
 
@@ -306,6 +351,7 @@ public class GpuSphSolver : MonoBehaviour
 
         sphComputeShader.SetVector("_InitGridDims", new Vector4(initGridDimensions.x, initGridDimensions.y, initGridDimensions.z, 0f));
         DispatchInitialState();
+        SeedLifecycleCountersAfterInitialize();
 
         initialized = true;
         UpdateDebugStats();
@@ -359,6 +405,7 @@ public class GpuSphSolver : MonoBehaviour
         {
             SetCommonShaderParameters();
             Dispatch(initializeNozzleEmissionKernel, particleCount);
+            SeedLifecycleCountersAfterInitialize();
             emissionWriteIndex = 0;
         }
         else
@@ -376,6 +423,7 @@ public class GpuSphSolver : MonoBehaviour
         float emitterRadius,
         float emitterSpeed,
         float emitterSpread,
+        float emitterLifetime,
         bool allowNozzleExit)
     {
         if (!initialized || !kernelsReady || !BuffersValid || emitCount <= 0)
@@ -393,6 +441,8 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetFloat("_EmitterRadius", Mathf.Max(0.001f, emitterRadius));
         sphComputeShader.SetFloat("_EmitterSpeed", Mathf.Max(0f, emitterSpeed));
         sphComputeShader.SetFloat("_EmitterSpread", Mathf.Max(0f, emitterSpread));
+        lastEmitterLifetime = Mathf.Max(0.1f, emitterLifetime);
+        sphComputeShader.SetFloat("_EmitterLifetime", lastEmitterLifetime);
         sphComputeShader.SetInt("_EmitterStartIndex", emissionWriteIndex);
         sphComputeShader.SetInt("_EmitCount", clampedEmitCount);
         sphComputeShader.SetInt("_EmitterSeed", Mathf.Abs(Time.frameCount * 73856093 + emissionWriteIndex));
@@ -451,8 +501,13 @@ public class GpuSphSolver : MonoBehaviour
         cellCountsBuffer = new ComputeBuffer(gridCellCount, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
         cellParticlesBuffer = new ComputeBuffer(gridCellCount * maxParticlesPerCell, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
         overflowCountersBuffer = new ComputeBuffer(1, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
+        lifecycleCountersBuffer = new ComputeBuffer(3, GpuSphBufferUtility.IntStrideBytes, ComputeBufferType.Structured);
         overflowReadbackScratch[0] = 0;
         overflowCountersBuffer.SetData(overflowReadbackScratch);
+        lifecycleReadbackScratch[0] = 0;
+        lifecycleReadbackScratch[1] = particleCount;
+        lifecycleReadbackScratch[2] = 0;
+        lifecycleCountersBuffer.SetData(lifecycleReadbackScratch);
 
         SetBuffersForKernel(initializeKernel);
         SetBuffersForKernel(initializeBucketVolumeKernel);
@@ -472,12 +527,16 @@ public class GpuSphSolver : MonoBehaviour
         long gridBytes =
             (long)gridCellCount * GpuSphBufferUtility.IntStrideBytes +
             (long)gridCellCount * maxParticlesPerCell * GpuSphBufferUtility.IntStrideBytes +
-            GpuSphBufferUtility.IntStrideBytes;
+            GpuSphBufferUtility.IntStrideBytes +
+            3L * GpuSphBufferUtility.IntStrideBytes;
 
         estimatedParticleBufferMemoryMb = GpuSphBufferUtility.BytesToMegabytes(particleBytes);
         estimatedGridMemoryMb = GpuSphBufferUtility.BytesToMegabytes(gridBytes);
         estimatedTotalGpuMemoryMb = estimatedParticleBufferMemoryMb + estimatedGridMemoryMb;
         gridOverflowCount = 0;
+        activeParticleCount = 0;
+        inactiveParticleCount = particleCount;
+        totalEmittedParticleCount = 0;
         overflowReadbackTimer = overflowReadbackInterval;
     }
 
@@ -488,6 +547,7 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetBuffer(kernel, "_CellCounts", cellCountsBuffer);
         sphComputeShader.SetBuffer(kernel, "_CellParticles", cellParticlesBuffer);
         sphComputeShader.SetBuffer(kernel, "_OverflowCounters", overflowCountersBuffer);
+        sphComputeShader.SetBuffer(kernel, "_LifecycleCounters", lifecycleCountersBuffer);
     }
 
     private void SetCommonShaderParameters()
@@ -515,6 +575,7 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetFloat("_CollisionDamping", settings.collisionDamping);
         sphComputeShader.SetFloat("_TangentDamping", settings.tangentDamping);
         sphComputeShader.SetFloat("_WallOffset", settings.wallOffset);
+        sphComputeShader.SetInt("_DeactivateOutOfBounds", simulationDomain == GpuSphSimulationDomain.OpenWorldWithBounds ? 1 : 0);
 
         SetBucketShaderParameters(boundsSize);
     }
@@ -560,6 +621,23 @@ public class GpuSphSolver : MonoBehaviour
         }
 
         Dispatch(initializeKernel, particleCount);
+    }
+
+    private void SeedLifecycleCountersAfterInitialize()
+    {
+        if (lifecycleCountersBuffer == null)
+        {
+            return;
+        }
+
+        activeParticleCount = simulationDomain == GpuSphSimulationDomain.OpenWorldWithBounds ? 0 : particleCount;
+        inactiveParticleCount = particleCount - activeParticleCount;
+        totalEmittedParticleCount = 0;
+        lifecycleReadbackScratch[0] = activeParticleCount;
+        lifecycleReadbackScratch[1] = inactiveParticleCount;
+        lifecycleReadbackScratch[2] = totalEmittedParticleCount;
+        lifecycleCountersBuffer.SetData(lifecycleReadbackScratch);
+        emissionWriteIndex = 0;
     }
 
     private void DispatchCollisionKernel()
@@ -651,6 +729,7 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetFloat("_EmitterRadius", provider != null ? provider.NozzleRadius : 0.04f);
         sphComputeShader.SetFloat("_EmitterSpeed", 2.2f);
         sphComputeShader.SetFloat("_EmitterSpread", 0.35f);
+        sphComputeShader.SetFloat("_EmitterLifetime", Mathf.Max(0.1f, lastEmitterLifetime));
     }
 
     private void Dispatch(int kernel, int count)
@@ -713,6 +792,14 @@ public class GpuSphSolver : MonoBehaviour
         overflowReadbackTimer = 0f;
         overflowCountersBuffer.GetData(overflowReadbackScratch);
         gridOverflowCount = overflowReadbackScratch[0];
+
+        if (lifecycleCountersBuffer != null)
+        {
+            lifecycleCountersBuffer.GetData(lifecycleReadbackScratch);
+            activeParticleCount = lifecycleReadbackScratch[0];
+            inactiveParticleCount = lifecycleReadbackScratch[1];
+            totalEmittedParticleCount = lifecycleReadbackScratch[2];
+        }
     }
 
     private void WarnOnce(string message)
@@ -733,6 +820,7 @@ public class GpuSphSolver : MonoBehaviour
         GpuSphBufferUtility.ReleaseBuffer(ref cellCountsBuffer);
         GpuSphBufferUtility.ReleaseBuffer(ref cellParticlesBuffer);
         GpuSphBufferUtility.ReleaseBuffer(ref overflowCountersBuffer);
+        GpuSphBufferUtility.ReleaseBuffer(ref lifecycleCountersBuffer);
         initialized = false;
     }
 }

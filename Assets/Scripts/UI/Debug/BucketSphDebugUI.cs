@@ -34,7 +34,7 @@ public class BucketSphDebugUI : MonoBehaviour
         }
 
         builder.Length = 0;
-        builder.AppendLine("Bucket SPH Phase 4.2");
+        builder.AppendLine("Bucket SPH Phase 4.3");
 
         if (controller != null)
         {
@@ -53,10 +53,20 @@ public class BucketSphDebugUI : MonoBehaviour
         {
             builder.Append("Simulated: ");
             builder.Append(stats.simulatedParticleCount);
-            builder.Append("  Rendered: ");
+            builder.Append("  Active: ");
+            builder.Append(stats.activeParticleCount);
+            builder.Append("  Inactive: ");
+            builder.AppendLine(stats.inactiveParticleCount.ToString());
+            builder.Append("Rendered slots: ");
             builder.AppendLine(stats.renderedParticleCount.ToString());
+            builder.Append("Total emitted: ");
+            builder.AppendLine(stats.totalEmittedParticleCount.ToString());
             builder.Append("Render stride: ");
             builder.AppendLine(stats.renderStride.ToString());
+            builder.Append("Domain: ");
+            builder.Append(stats.simulationDomain);
+            builder.Append("  Frame: ");
+            builder.AppendLine(stats.simulationFrame);
             builder.Append("GPU MB: ");
             builder.AppendLine(stats.estimatedTotalGpuMemoryMb.ToString("0.0"));
             builder.Append("Grid: ");
@@ -69,6 +79,9 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.Append(stats.solverInitialized ? "Yes" : "No");
             builder.Append("  Buffers: ");
             builder.AppendLine(stats.buffersValid ? "Valid" : "Invalid");
+            builder.Append("Lifetime: ");
+            builder.Append(stats.emitterLifetime.ToString("0.0"));
+            builder.AppendLine("s");
 
             if (stats.gridOverflowCount > 0)
             {
@@ -85,6 +98,9 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine("/s");
             builder.Append("Last burst: ");
             builder.AppendLine(nozzleEmitter.EmittedThisFrame.ToString());
+            builder.Append("Particle lifetime: ");
+            builder.Append(nozzleEmitter.particleLifetime.ToString("0.0"));
+            builder.AppendLine("s");
             builder.Append("Nozzle world: ");
             builder.AppendLine(nozzleEmitter.NozzleWorldPosition.ToString("F2"));
         }
@@ -96,7 +112,7 @@ public class BucketSphDebugUI : MonoBehaviour
         }
 
         builder.AppendLine("Controls: R Reset | 1 Internal | 2 Nozzle | 3 Mixed future | E Emit");
-        builder.AppendLine("Profiles: F1 Debug | F2 Presentation | F3 Professor 1M | F4 VR Safe");
+        builder.AppendLine("Profiles: F1 Bucket Demo | F2 Presentation | F3 Professor 1M | F4 VR Safe");
 
         readout.text = builder.ToString();
     }
@@ -135,7 +151,7 @@ public class BucketSphDebugUI : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.F1))
         {
-            ApplyDebugProfile();
+            ApplyBucketNozzleDemoProfile();
         }
 
         if (Input.GetKeyDown(KeyCode.F2))
@@ -242,6 +258,14 @@ public class BucketSphDebugUI : MonoBehaviour
         }
     }
 
+    public void ApplyBucketNozzleDemoProfile()
+    {
+        if (controller != null)
+        {
+            controller.ApplyBucketNozzleDemoProfile();
+        }
+    }
+
     public void ApplyPresentationProfile()
     {
         if (controller != null)
@@ -293,6 +317,6 @@ public class BucketSphDebugUI : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = new Vector2(520f, 340f);
+        rect.sizeDelta = new Vector2(560f, 430f);
     }
 }

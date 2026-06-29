@@ -5,5 +5,6 @@ public enum SimulationMode
     Presentation,
     ProfessorBenchmark,
     VRSafe,
-    FluidBoxBenchmark
+    FluidBoxBenchmark,
+    BucketNozzleDemo
 }
