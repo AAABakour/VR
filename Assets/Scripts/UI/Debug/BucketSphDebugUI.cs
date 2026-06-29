@@ -53,6 +53,11 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.Append(stats.gridDimensions);
             builder.Append(" overflow ");
             builder.AppendLine(stats.gridOverflowCount.ToString());
+
+            if (stats.gridOverflowCount > 0)
+            {
+                builder.AppendLine("WARNING: SPH grid overflow detected. Increase grid capacity, reduce particle density, or use a higher render stride/profile budget.");
+            }
         }
 
         if (nozzleEmitter != null)
@@ -112,6 +117,78 @@ public class BucketSphDebugUI : MonoBehaviour
         if (controller != null)
         {
             controller.ResetBucketSph();
+        }
+    }
+
+    public void SetInternalFluidMode()
+    {
+        if (controller != null)
+        {
+            controller.SetInternalFluidMode();
+        }
+    }
+
+    public void SetNozzleEmissionMode()
+    {
+        if (controller != null)
+        {
+            controller.SetNozzleEmissionMode();
+        }
+    }
+
+    public void SetInternalAndEmissionMode()
+    {
+        if (controller != null)
+        {
+            controller.SetInternalAndEmissionMode();
+        }
+    }
+
+    public void SetDebugStaticEmissionMode()
+    {
+        if (controller != null)
+        {
+            controller.SetDebugStaticEmissionMode();
+        }
+    }
+
+    public void ToggleEmission()
+    {
+        if (controller != null)
+        {
+            controller.ToggleEmission();
+        }
+    }
+
+    public void ApplyDebugProfile()
+    {
+        if (controller != null)
+        {
+            controller.ApplyDebugProfile();
+        }
+    }
+
+    public void ApplyPresentationProfile()
+    {
+        if (controller != null)
+        {
+            controller.ApplyPresentationProfile();
+        }
+    }
+
+    public void ApplyProfessorBenchmarkProfile()
+    {
+        if (controller != null)
+        {
+            controller.ApplyProfessorBenchmarkProfile();
+        }
+    }
+
+    public void ApplyVrSafeProfile()
+    {
+        if (controller != null)
+        {
+            controller.ApplyVrSafeProfile();
         }
     }
 

@@ -81,6 +81,28 @@ Suggested smoke test:
 - The renderer still uses particle billboards rather than surface extraction.
 - Legacy CPU paint is disabled only in the Phase 4 scene and remains available for parity checks.
 
+## Phase 4.1 Stabilization Fixes
+
+- Verified `Assets/Shaders/SPH/GpuSph.compute` contains a single `ComputeDensityPressure` kernel function declaration and all solver-required kernels remain present.
+- Confirmed the Phase 4 kernel set:
+  - `InitializeParticles`
+  - `InitializeBucketVolume`
+  - `InitializeNozzleEmission`
+  - `ClearGrid`
+  - `BuildGrid`
+  - `ComputeDensityPressure`
+  - `ComputeForces`
+  - `Integrate`
+  - `EmitFromNozzle`
+  - `HandleBoxCollisions`
+  - `HandleBucketCollisions`
+- Added safe `BucketSphDebugUI` callbacks for direct mode switching, emission toggling, and profile application.
+- Added a `BucketSphDebugUI` warning when `gridOverflowCount > 0`.
+- Improved `BucketSphFluidController` so mode/profile changes resolve references, configure solver domain/emitter state, and reinitialize the solver consistently.
+- Restored non-static emission modes to the configured default inherited bucket velocity after using `DebugStaticEmission`.
+- Reconfirmed the Phase 4 scene keeps `PaintEmitter` and `PaintParticleSimulator` disabled by default only in `MainSimulationScene_Phase04_BucketSphNozzle.unity`.
+- No canvas impact extraction or painting bridge is implemented in Phase 4.1.
+
 ## Phase 5 Focus
 
 Phase 5 should add sparse GPU impact extraction and a controlled bridge from SPH impacts to canvas painting. That work should avoid full particle readback, avoid CPU particle loops, and keep legacy painting available until visual parity is proven.

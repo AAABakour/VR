@@ -17,6 +17,10 @@ public class BucketSphFluidController : MonoBehaviour
     public PaintEmitter legacyPaintEmitter;
     public PaintParticleSimulator legacyPaintParticleSimulator;
 
+    [Header("Emission Defaults")]
+    [Range(0f, 1f)]
+    public float defaultInheritedBucketVelocity = 0.55f;
+
     [Header("Profiles")]
     public SimulationProfile legacyPrototypeProfile;
     public SimulationProfile debugProfile;
@@ -52,8 +56,8 @@ public class BucketSphFluidController : MonoBehaviour
 
         if (initializeOnStart)
         {
+            SetMode(startupMode, false);
             ApplyProfile(startupProfile != null ? startupProfile : debugProfile);
-            SetMode(startupMode, true);
         }
     }
 
@@ -132,6 +136,7 @@ public class BucketSphFluidController : MonoBehaviour
 
     public void SetMode(BucketSphMode mode, bool resetFluid)
     {
+        ResolveReferences();
         currentMode = mode;
         ConfigureSolverDomain();
         ConfigureEmitter();
@@ -149,7 +154,11 @@ public class BucketSphFluidController : MonoBehaviour
             return;
         }
 
+        ResolveReferences();
         activeProfile = profile;
+        ConfigureSolverDomain();
+        ConfigureEmitter();
+
         if (solver != null)
         {
             solver.ApplySimulationProfile(profile);
@@ -201,9 +210,68 @@ public class BucketSphFluidController : MonoBehaviour
         SetMode((BucketSphMode)next, true);
     }
 
+    public void SetInternalFluidMode()
+    {
+        SetMode(BucketSphMode.InternalBucketFluid, true);
+    }
+
+    public void SetNozzleEmissionMode()
+    {
+        SetMode(BucketSphMode.NozzleEmission, true);
+    }
+
+    public void SetInternalAndEmissionMode()
+    {
+        SetMode(BucketSphMode.InternalAndEmission, true);
+    }
+
+    public void SetDebugStaticEmissionMode()
+    {
+        SetMode(BucketSphMode.DebugStaticEmission, true);
+    }
+
+    public void ToggleEmission()
+    {
+        ResolveReferences();
+
+        bool enableEmission = nozzleEmitter == null || !nozzleEmitter.emitOnUpdate;
+        if (enableEmission)
+        {
+            BucketSphMode emissionMode = currentMode == BucketSphMode.InternalBucketFluid
+                ? BucketSphMode.InternalAndEmission
+                : currentMode;
+            SetMode(emissionMode, true);
+
+            if (nozzleEmitter != null)
+            {
+                nozzleEmitter.emitOnUpdate = true;
+            }
+
+            return;
+        }
+
+        if (nozzleEmitter != null)
+        {
+            nozzleEmitter.emitOnUpdate = false;
+            nozzleEmitter.ResetEmitter();
+        }
+
+        if (currentMode == BucketSphMode.NozzleEmission ||
+            currentMode == BucketSphMode.InternalAndEmission ||
+            currentMode == BucketSphMode.DebugStaticEmission)
+        {
+            SetMode(BucketSphMode.InternalBucketFluid, true);
+        }
+    }
+
     public void UseDebugProfile()
     {
         ApplyProfile(debugProfile);
+    }
+
+    public void ApplyDebugProfile()
+    {
+        UseDebugProfile();
     }
 
     public void UsePresentationProfile()
@@ -211,14 +279,29 @@ public class BucketSphFluidController : MonoBehaviour
         ApplyProfile(presentationProfile);
     }
 
+    public void ApplyPresentationProfile()
+    {
+        UsePresentationProfile();
+    }
+
     public void UseProfessorBenchmarkProfile()
     {
         ApplyProfile(professorBenchmarkProfile);
     }
 
+    public void ApplyProfessorBenchmarkProfile()
+    {
+        UseProfessorBenchmarkProfile();
+    }
+
     public void UseVrSafeProfile()
     {
         ApplyProfile(vrSafeProfile);
+    }
+
+    public void ApplyVrSafeProfile()
+    {
+        UseVrSafeProfile();
     }
 
     private void ConfigureSolverDomain()
@@ -257,15 +340,13 @@ public class BucketSphFluidController : MonoBehaviour
 
         nozzleEmitter.emitOnUpdate = emitting;
         nozzleEmitter.allowNozzleExit = currentMode != BucketSphMode.InternalBucketFluid;
+        nozzleEmitter.inheritedBucketVelocity = currentMode == BucketSphMode.DebugStaticEmission
+            ? 0f
+            : defaultInheritedBucketVelocity;
 
         if (collisionProvider != null)
         {
             collisionProvider.allowNozzleExit = nozzleEmitter.allowNozzleExit;
-        }
-
-        if (currentMode == BucketSphMode.DebugStaticEmission)
-        {
-            nozzleEmitter.inheritedBucketVelocity = 0f;
         }
     }
 }
