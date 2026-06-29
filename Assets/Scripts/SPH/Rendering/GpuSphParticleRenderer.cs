@@ -58,9 +58,9 @@ public class GpuSphParticleRenderer : MonoBehaviour
         Camera camera = renderCamera != null ? renderCamera : Camera.main;
         Vector3 cameraRight = camera != null ? camera.transform.right : Vector3.right;
         Vector3 cameraUp = camera != null ? camera.transform.up : Vector3.up;
-        Matrix4x4 localToWorld = fluidBox != null ? fluidBox.LocalToWorldMatrix : Matrix4x4.identity;
-        Vector3 boundsSize = fluidBox != null ? fluidBox.BoundsSize : solver.BoundsSize;
-        Vector3 center = fluidBox != null ? fluidBox.transform.position : transform.position;
+        Matrix4x4 localToWorld = fluidBox != null ? fluidBox.LocalToWorldMatrix : solver.SimulationLocalToWorldMatrix;
+        Vector3 boundsSize = fluidBox != null ? fluidBox.BoundsSize : solver.SimulationBoundsSize;
+        Vector3 center = fluidBox != null ? fluidBox.transform.position : solver.SimulationWorldCenter;
         Bounds bounds = new Bounds(center, boundsSize + Vector3.one * 2f);
 
         material.SetBuffer(ParticlesId, solver.ParticleBuffer);

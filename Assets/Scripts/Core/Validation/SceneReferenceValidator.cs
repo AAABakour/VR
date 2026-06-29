@@ -10,6 +10,7 @@ public class SceneReferenceValidator : MonoBehaviour
     public bool validateLegacySceneReferences = true;
     public bool validatePhaseTwoRigReferences = true;
     public bool validatePhaseThreeFluidBoxReferences = false;
+    public bool validatePhaseFourBucketSphReferences = false;
 
     [Header("Expected Scene Objects")]
     public Transform pivotPoint;
@@ -43,6 +44,13 @@ public class SceneReferenceValidator : MonoBehaviour
     public FluidBoxMotionController fluidBoxMotionController;
     public FluidBoxBenchmarkController fluidBoxBenchmarkController;
     public FluidBoxBenchmarkUI fluidBoxBenchmarkUI;
+
+    [Header("Phase 4 Bucket SPH Systems")]
+    public BucketSphFluidController bucketSphFluidController;
+    public BucketSphNozzleEmitter bucketSphNozzleEmitter;
+    public BucketSphCollisionProvider bucketSphCollisionProvider;
+    public BucketSphDebugUI bucketSphDebugUI;
+    public BucketSphSubsystemAdapter bucketSphSubsystemAdapter;
 
     private void Start()
     {
@@ -89,6 +97,11 @@ public class SceneReferenceValidator : MonoBehaviour
         if (validatePhaseThreeFluidBoxReferences)
         {
             ValidatePhaseThreeFluidBoxReferences(warnings);
+        }
+
+        if (validatePhaseFourBucketSphReferences)
+        {
+            ValidatePhaseFourBucketSphReferences(warnings);
         }
 
         if (warnings.Count == 0)
@@ -235,6 +248,31 @@ public class SceneReferenceValidator : MonoBehaviour
         {
             fluidBoxBenchmarkUI = Object.FindFirstObjectByType<FluidBoxBenchmarkUI>();
         }
+
+        if (bucketSphFluidController == null)
+        {
+            bucketSphFluidController = Object.FindFirstObjectByType<BucketSphFluidController>();
+        }
+
+        if (bucketSphNozzleEmitter == null)
+        {
+            bucketSphNozzleEmitter = Object.FindFirstObjectByType<BucketSphNozzleEmitter>();
+        }
+
+        if (bucketSphCollisionProvider == null)
+        {
+            bucketSphCollisionProvider = Object.FindFirstObjectByType<BucketSphCollisionProvider>();
+        }
+
+        if (bucketSphDebugUI == null)
+        {
+            bucketSphDebugUI = Object.FindFirstObjectByType<BucketSphDebugUI>();
+        }
+
+        if (bucketSphSubsystemAdapter == null)
+        {
+            bucketSphSubsystemAdapter = Object.FindFirstObjectByType<BucketSphSubsystemAdapter>();
+        }
     }
 
     private void ValidatePendulumReferences(List<string> warnings)
@@ -369,6 +407,62 @@ public class SceneReferenceValidator : MonoBehaviour
             RequireReference(warnings, fluidBoxBenchmarkUI.benchmarkController, "FluidBoxBenchmarkUI.benchmarkController");
             RequireReference(warnings, fluidBoxBenchmarkUI.stats, "FluidBoxBenchmarkUI.stats");
             RequireReference(warnings, fluidBoxBenchmarkUI.motionController, "FluidBoxBenchmarkUI.motionController");
+        }
+    }
+
+    private void ValidatePhaseFourBucketSphReferences(List<string> warnings)
+    {
+        RequireReference(warnings, bucketSphFluidController, "BucketSphFluidController");
+        RequireReference(warnings, bucketSphNozzleEmitter, "BucketSphNozzleEmitter");
+        RequireReference(warnings, bucketSphCollisionProvider, "BucketSphCollisionProvider");
+        RequireReference(warnings, bucketSphDebugUI, "BucketSphDebugUI");
+        RequireReference(warnings, bucketSphSubsystemAdapter, "BucketSphSubsystemAdapter");
+        RequireReference(warnings, gpuSphSolver, "GpuSphSolver");
+        RequireReference(warnings, gpuSphParticleRenderer, "GpuSphParticleRenderer");
+
+        if (bucketSphFluidController != null)
+        {
+            RequireReference(warnings, bucketSphFluidController.solver, "BucketSphFluidController.solver");
+            RequireReference(warnings, bucketSphFluidController.particleRenderer, "BucketSphFluidController.particleRenderer");
+            RequireReference(warnings, bucketSphFluidController.collisionProvider, "BucketSphFluidController.collisionProvider");
+            RequireReference(warnings, bucketSphFluidController.nozzleEmitter, "BucketSphFluidController.nozzleEmitter");
+            RequireReference(warnings, bucketSphFluidController.bucketRigController, "BucketSphFluidController.bucketRigController");
+            RequireReference(warnings, bucketSphFluidController.bucketMotionDataProvider, "BucketSphFluidController.bucketMotionDataProvider");
+        }
+
+        if (bucketSphNozzleEmitter != null)
+        {
+            RequireReference(warnings, bucketSphNozzleEmitter.solver, "BucketSphNozzleEmitter.solver");
+            RequireReference(warnings, bucketSphNozzleEmitter.collisionProvider, "BucketSphNozzleEmitter.collisionProvider");
+            RequireReference(warnings, bucketSphNozzleEmitter.nozzlePoint, "BucketSphNozzleEmitter.nozzlePoint");
+        }
+
+        if (bucketSphCollisionProvider != null)
+        {
+            RequireReference(warnings, bucketSphCollisionProvider.bucketRigController, "BucketSphCollisionProvider.bucketRigController");
+            RequireReference(warnings, bucketSphCollisionProvider.bucketCollisionProxy, "BucketSphCollisionProvider.bucketCollisionProxy");
+            RequireReference(warnings, bucketSphCollisionProvider.motionDataProvider, "BucketSphCollisionProvider.motionDataProvider");
+            RequireReference(warnings, bucketSphCollisionProvider.bucketRoot, "BucketSphCollisionProvider.bucketRoot");
+            RequireReference(warnings, bucketSphCollisionProvider.nozzlePoint, "BucketSphCollisionProvider.nozzlePoint");
+        }
+
+        if (bucketSphSubsystemAdapter != null)
+        {
+            RequireReference(warnings, bucketSphSubsystemAdapter.controller, "BucketSphSubsystemAdapter.controller");
+        }
+
+        if (gpuSphSolver != null)
+        {
+            RequireReference(warnings, gpuSphSolver.sphComputeShader, "GpuSphSolver.sphComputeShader");
+            RequireReference(warnings, gpuSphSolver.settingsTemplate, "GpuSphSolver.settingsTemplate");
+            RequireReference(warnings, gpuSphSolver.bucketCollisionProvider, "GpuSphSolver.bucketCollisionProvider");
+            RequireReference(warnings, gpuSphSolver.debugStats, "GpuSphSolver.debugStats");
+        }
+
+        if (gpuSphParticleRenderer != null)
+        {
+            RequireReference(warnings, gpuSphParticleRenderer.solver, "GpuSphParticleRenderer.solver");
+            RequireReference(warnings, gpuSphParticleRenderer.particleMaterial, "GpuSphParticleRenderer.particleMaterial");
         }
     }
 

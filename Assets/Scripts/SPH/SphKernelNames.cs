@@ -7,4 +7,8 @@ public static class SphKernelNames
     public const string ComputeForces = "ComputeForces";
     public const string Integrate = "Integrate";
     public const string HandleBoxCollisions = "HandleBoxCollisions";
+    public const string InitializeBucketVolume = "InitializeBucketVolume";
+    public const string InitializeNozzleEmission = "InitializeNozzleEmission";
+    public const string EmitFromNozzle = "EmitFromNozzle";
+    public const string HandleBucketCollisions = "HandleBucketCollisions";
 }

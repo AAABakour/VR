@@ -1,6 +1,13 @@
 using UnityEngine;
 using UnityEngine.Serialization;
 
+public enum GpuSphSimulationDomain
+{
+    FluidBox = 0,
+    BucketCylinder = 1,
+    OpenWorldWithBounds = 2
+}
+
 [DefaultExecutionOrder(80)]
 public class GpuSphSolver : MonoBehaviour
 {
@@ -8,6 +15,8 @@ public class GpuSphSolver : MonoBehaviour
     [FormerlySerializedAs("settings")]
     public GpuSphSettings settingsTemplate;
     public FluidBoxController fluidBox;
+    public GpuSphSimulationDomain simulationDomain = GpuSphSimulationDomain.FluidBox;
+    public BucketSphCollisionProvider bucketCollisionProvider;
     public GpuSphDebugStats debugStats;
     public bool initializeOnStart = true;
     public bool simulate = true;
@@ -29,6 +38,10 @@ public class GpuSphSolver : MonoBehaviour
     private int forcesKernel;
     private int integrateKernel;
     private int collisionKernel;
+    private int initializeBucketVolumeKernel;
+    private int initializeNozzleEmissionKernel;
+    private int emitFromNozzleKernel;
+    private int bucketCollisionKernel;
 
     private int particleCount;
     private int renderStride;
@@ -44,6 +57,7 @@ public class GpuSphSolver : MonoBehaviour
     private int particleDispatchGroupCount;
     private int gridDispatchGroupCount;
     private int gridOverflowCount;
+    private int emissionWriteIndex;
     private readonly int[] overflowReadbackScratch = new int[1];
     private float overflowReadbackTimer;
     private bool initialized;
@@ -108,6 +122,43 @@ public class GpuSphSolver : MonoBehaviour
     public Vector3 BoundsSize
     {
         get { return ActiveSettings != null ? ActiveSettings.boundsSize : Vector3.zero; }
+    }
+
+    public Vector3 SimulationBoundsSize
+    {
+        get
+        {
+            GpuSphSettings settings = ActiveSettings;
+            return settings != null ? ResolveBoundsSize(settings) : Vector3.zero;
+        }
+    }
+
+    public Matrix4x4 SimulationLocalToWorldMatrix
+    {
+        get
+        {
+            if (simulationDomain == GpuSphSimulationDomain.FluidBox && fluidBox != null)
+            {
+                return fluidBox.LocalToWorldMatrix;
+            }
+
+            if (bucketCollisionProvider != null)
+            {
+                return bucketCollisionProvider.LocalToWorldMatrix;
+            }
+
+            return transform.localToWorldMatrix;
+        }
+    }
+
+    public Vector3 SimulationWorldCenter
+    {
+        get { return SimulationLocalToWorldMatrix.MultiplyPoint3x4(Vector3.zero); }
+    }
+
+    public string SimulationDomainLabel
+    {
+        get { return simulationDomain.ToString(); }
     }
 
     public int Substeps
@@ -235,7 +286,7 @@ public class GpuSphSolver : MonoBehaviour
         SetCommonShaderParameters();
 
         sphComputeShader.SetVector("_InitGridDims", new Vector4(initGridDimensions.x, initGridDimensions.y, initGridDimensions.z, 0f));
-        Dispatch(initializeKernel, particleCount);
+        DispatchInitialState();
 
         initialized = true;
         UpdateDebugStats();
@@ -265,16 +316,87 @@ public class GpuSphSolver : MonoBehaviour
         Initialize();
     }
 
+    public void SetSimulationDomain(GpuSphSimulationDomain domain)
+    {
+        simulationDomain = domain;
+        if (initialized)
+        {
+            Initialize();
+        }
+    }
+
+    public void SetBucketCollisionProvider(BucketSphCollisionProvider provider)
+    {
+        bucketCollisionProvider = provider;
+        if (initialized)
+        {
+            SetCommonShaderParameters();
+        }
+    }
+
+    public void InitializeForNozzleEmission()
+    {
+        if (initialized && kernelsReady)
+        {
+            SetCommonShaderParameters();
+            Dispatch(initializeNozzleEmissionKernel, particleCount);
+            emissionWriteIndex = 0;
+        }
+        else
+        {
+            simulationDomain = GpuSphSimulationDomain.OpenWorldWithBounds;
+            Initialize();
+        }
+    }
+
+    public void EmitFromNozzle(
+        Vector3 localPosition,
+        Vector3 localDirection,
+        Vector3 localInheritedVelocity,
+        int emitCount,
+        float emitterRadius,
+        float emitterSpeed,
+        float emitterSpread,
+        bool allowNozzleExit)
+    {
+        if (!initialized || !kernelsReady || !BuffersValid || emitCount <= 0)
+        {
+            return;
+        }
+
+        int clampedEmitCount = Mathf.Clamp(emitCount, 1, particleCount);
+        Vector3 direction = localDirection.sqrMagnitude > 0.000001f ? localDirection.normalized : Vector3.down;
+
+        SetCommonShaderParameters();
+        sphComputeShader.SetVector("_EmitterLocalPosition", localPosition);
+        sphComputeShader.SetVector("_EmitterDirection", direction);
+        sphComputeShader.SetVector("_EmitterInheritedVelocity", localInheritedVelocity);
+        sphComputeShader.SetFloat("_EmitterRadius", Mathf.Max(0.001f, emitterRadius));
+        sphComputeShader.SetFloat("_EmitterSpeed", Mathf.Max(0f, emitterSpeed));
+        sphComputeShader.SetFloat("_EmitterSpread", Mathf.Max(0f, emitterSpread));
+        sphComputeShader.SetInt("_EmitterStartIndex", emissionWriteIndex);
+        sphComputeShader.SetInt("_EmitCount", clampedEmitCount);
+        sphComputeShader.SetInt("_EmitterSeed", Mathf.Abs(Time.frameCount * 73856093 + emissionWriteIndex));
+        sphComputeShader.SetInt("_AllowNozzleExit", allowNozzleExit ? 1 : 0);
+
+        Dispatch(emitFromNozzleKernel, clampedEmitCount);
+        emissionWriteIndex = (emissionWriteIndex + clampedEmitCount) % Mathf.Max(1, particleCount);
+    }
+
     private bool CacheKernels()
     {
         kernelsReady =
             TryFindKernel(SphKernelNames.InitializeParticles, ref initializeKernel) &&
+            TryFindKernel(SphKernelNames.InitializeBucketVolume, ref initializeBucketVolumeKernel) &&
+            TryFindKernel(SphKernelNames.InitializeNozzleEmission, ref initializeNozzleEmissionKernel) &&
             TryFindKernel(SphKernelNames.ClearGrid, ref clearGridKernel) &&
             TryFindKernel(SphKernelNames.BuildGrid, ref buildGridKernel) &&
             TryFindKernel(SphKernelNames.ComputeDensityPressure, ref densityPressureKernel) &&
             TryFindKernel(SphKernelNames.ComputeForces, ref forcesKernel) &&
             TryFindKernel(SphKernelNames.Integrate, ref integrateKernel) &&
-            TryFindKernel(SphKernelNames.HandleBoxCollisions, ref collisionKernel);
+            TryFindKernel(SphKernelNames.HandleBoxCollisions, ref collisionKernel) &&
+            TryFindKernel(SphKernelNames.EmitFromNozzle, ref emitFromNozzleKernel) &&
+            TryFindKernel(SphKernelNames.HandleBucketCollisions, ref bucketCollisionKernel);
 
         return kernelsReady;
     }
@@ -313,12 +435,16 @@ public class GpuSphSolver : MonoBehaviour
         overflowCountersBuffer.SetData(overflowReadbackScratch);
 
         SetBuffersForKernel(initializeKernel);
+        SetBuffersForKernel(initializeBucketVolumeKernel);
+        SetBuffersForKernel(initializeNozzleEmissionKernel);
         SetBuffersForKernel(clearGridKernel);
         SetBuffersForKernel(buildGridKernel);
         SetBuffersForKernel(densityPressureKernel);
         SetBuffersForKernel(forcesKernel);
         SetBuffersForKernel(integrateKernel);
         SetBuffersForKernel(collisionKernel);
+        SetBuffersForKernel(emitFromNozzleKernel);
+        SetBuffersForKernel(bucketCollisionKernel);
 
         long particleBytes =
             (long)particleCount * GpuSphBufferUtility.ParticleStrideBytes +
@@ -347,8 +473,8 @@ public class GpuSphSolver : MonoBehaviour
     private void SetCommonShaderParameters()
     {
         GpuSphSettings settings = runtimeSettings;
-        Vector3 gravity = fluidBox != null ? fluidBox.LocalGravity : settings.gravity;
-        Vector3 boundsSize = fluidBox != null ? fluidBox.BoundsSize : settings.boundsSize;
+        Vector3 gravity = ResolveLocalGravity(settings);
+        Vector3 boundsSize = ResolveBoundsSize(settings);
 
         sphComputeShader.SetInt("_ParticleCount", particleCount);
         sphComputeShader.SetInt("_GridCellCount", gridCellCount);
@@ -369,6 +495,8 @@ public class GpuSphSolver : MonoBehaviour
         sphComputeShader.SetFloat("_CollisionDamping", settings.collisionDamping);
         sphComputeShader.SetFloat("_TangentDamping", settings.tangentDamping);
         sphComputeShader.SetFloat("_WallOffset", settings.wallOffset);
+
+        SetBucketShaderParameters(boundsSize);
     }
 
     private void StepSimulation()
@@ -390,11 +518,90 @@ public class GpuSphSolver : MonoBehaviour
             Dispatch(densityPressureKernel, particleCount);
             Dispatch(forcesKernel, particleCount);
             Dispatch(integrateKernel, particleCount);
-            Dispatch(collisionKernel, particleCount);
+            DispatchCollisionKernel();
         }
 
         ReadbackOverflowCounterIfDue();
         UpdateDebugStats();
+    }
+
+    private void DispatchInitialState()
+    {
+        if (simulationDomain == GpuSphSimulationDomain.BucketCylinder)
+        {
+            Dispatch(initializeBucketVolumeKernel, particleCount);
+            return;
+        }
+
+        if (simulationDomain == GpuSphSimulationDomain.OpenWorldWithBounds)
+        {
+            Dispatch(initializeNozzleEmissionKernel, particleCount);
+            return;
+        }
+
+        Dispatch(initializeKernel, particleCount);
+    }
+
+    private void DispatchCollisionKernel()
+    {
+        if (simulationDomain == GpuSphSimulationDomain.BucketCylinder)
+        {
+            Dispatch(bucketCollisionKernel, particleCount);
+            return;
+        }
+
+        Dispatch(collisionKernel, particleCount);
+    }
+
+    private Vector3 ResolveLocalGravity(GpuSphSettings settings)
+    {
+        if (simulationDomain == GpuSphSimulationDomain.FluidBox && fluidBox != null)
+        {
+            return fluidBox.LocalGravity;
+        }
+
+        if (bucketCollisionProvider != null)
+        {
+            return bucketCollisionProvider.LocalGravity;
+        }
+
+        return settings.gravity;
+    }
+
+    private Vector3 ResolveBoundsSize(GpuSphSettings settings)
+    {
+        if (simulationDomain == GpuSphSimulationDomain.FluidBox && fluidBox != null)
+        {
+            return fluidBox.BoundsSize;
+        }
+
+        if (bucketCollisionProvider != null)
+        {
+            return bucketCollisionProvider.ExternalBoundsSize;
+        }
+
+        return settings.boundsSize;
+    }
+
+    private void SetBucketShaderParameters(Vector3 boundsSize)
+    {
+        BucketSphCollisionProvider provider = bucketCollisionProvider;
+
+        sphComputeShader.SetVector("_ExternalBoundsSize", boundsSize);
+        sphComputeShader.SetVector("_BucketLocalCenter", provider != null ? provider.LocalCenter : Vector3.zero);
+        sphComputeShader.SetFloat("_BucketRadius", provider != null ? provider.Radius : 0.45f);
+        sphComputeShader.SetFloat("_BucketHeight", provider != null ? provider.Height : 0.9f);
+        sphComputeShader.SetFloat("_BucketBottomOffset", provider != null ? provider.BottomOffset : -0.45f);
+        sphComputeShader.SetFloat("_BucketWallThickness", provider != null ? provider.WallThickness : 0.035f);
+        sphComputeShader.SetVector("_BucketNozzleLocalPosition", provider != null ? provider.NozzleLocalPosition : new Vector3(-0.14f, -1f, 0f));
+        sphComputeShader.SetFloat("_BucketNozzleRadius", provider != null ? provider.NozzleRadius : 0.04f);
+        sphComputeShader.SetInt("_AllowNozzleExit", provider != null && provider.allowNozzleExit ? 1 : 0);
+        sphComputeShader.SetVector("_EmitterLocalPosition", provider != null ? provider.NozzleLocalPosition : new Vector3(-0.14f, -1f, 0f));
+        sphComputeShader.SetVector("_EmitterDirection", Vector3.down);
+        sphComputeShader.SetVector("_EmitterInheritedVelocity", provider != null ? provider.LocalBucketVelocity : Vector3.zero);
+        sphComputeShader.SetFloat("_EmitterRadius", provider != null ? provider.NozzleRadius : 0.04f);
+        sphComputeShader.SetFloat("_EmitterSpeed", 2.2f);
+        sphComputeShader.SetFloat("_EmitterSpread", 0.35f);
     }
 
     private void Dispatch(int kernel, int count)

@@ -1,10 +1,14 @@
 #pragma kernel InitializeParticles
+#pragma kernel InitializeBucketVolume
+#pragma kernel InitializeNozzleEmission
 #pragma kernel ClearGrid
 #pragma kernel BuildGrid
 #pragma kernel ComputeDensityPressure
 #pragma kernel ComputeForces
 #pragma kernel Integrate
+#pragma kernel EmitFromNozzle
 #pragma kernel HandleBoxCollisions
+#pragma kernel HandleBucketCollisions
 
 #define THREADS 256
 #define PI 3.14159265359
@@ -44,6 +48,24 @@ float _MaxVelocity;
 float _CollisionDamping;
 float _TangentDamping;
 float _WallOffset;
+float3 _ExternalBoundsSize;
+float3 _BucketLocalCenter;
+float _BucketRadius;
+float _BucketHeight;
+float _BucketBottomOffset;
+float _BucketWallThickness;
+float3 _BucketNozzleLocalPosition;
+float _BucketNozzleRadius;
+int _AllowNozzleExit;
+float3 _EmitterLocalPosition;
+float3 _EmitterDirection;
+float3 _EmitterInheritedVelocity;
+float _EmitterRadius;
+float _EmitterSpeed;
+float _EmitterSpread;
+int _EmitterStartIndex;
+int _EmitCount;
+int _EmitterSeed;
 
 uint Hash(uint x)
 {
@@ -58,6 +80,23 @@ uint Hash(uint x)
 float Random01(uint x)
 {
     return (Hash(x) & 0x00ffffffu) / 16777215.0;
+}
+
+float3 RandomUnitVector(uint seed)
+{
+    float z = Random01(seed) * 2.0 - 1.0;
+    float angle = Random01(seed + 17u) * PI * 2.0;
+    float r = sqrt(max(0.0, 1.0 - z * z));
+    return float3(cos(angle) * r, z, sin(angle) * r);
+}
+
+void BasisFromDirection(float3 direction, out float3 right, out float3 up)
+{
+    float directionLength = length(direction);
+    float3 forward = directionLength > 0.001 ? direction / directionLength : float3(0.0, -1.0, 0.0);
+    float3 helper = abs(forward.y) > 0.95 ? float3(1.0, 0.0, 0.0) : float3(0.0, 1.0, 0.0);
+    right = normalize(cross(helper, forward));
+    up = normalize(cross(forward, right));
 }
 
 int CellIndexFromCoord(int3 coord)
@@ -164,6 +203,68 @@ void InitializeParticles(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(THREADS, 1, 1)]
+void InitializeBucketVolume(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    float spacing = max(_InitialSpacing, _ParticleRadius * 0.75);
+    float usableRadius = max(_BucketRadius - _WallOffset - _ParticleRadius * 1.5, _ParticleRadius);
+    float fillHeight = max(_BucketHeight * 0.62, spacing);
+    float bottomY = _BucketLocalCenter.y + _BucketBottomOffset + _WallOffset + spacing;
+    uint perLayer = max(1u, (uint)ceil((usableRadius * usableRadius * PI) / max(spacing * spacing, 0.00001)));
+    uint layer = index / perLayer;
+    uint layerIndex = index % perLayer;
+    float angle = Random01(layerIndex * 928371u + layer * 37u) * PI * 2.0;
+    float r = sqrt(Random01(layerIndex * 137u + 19u)) * usableRadius;
+    float jitter = (Random01(index * 19u + 3u) - 0.5) * spacing * 0.1;
+
+    ParticleState particle;
+    particle.position = _BucketLocalCenter + float3(cos(angle) * r + jitter, 0.0, sin(angle) * r + jitter);
+    particle.position.y = bottomY + fmod((float)layer * spacing, fillHeight);
+    particle.velocity = 0.0;
+    particle.density = _RestDensity;
+    particle.pressure = 0.0;
+    _Particles[index] = particle;
+    _Forces[index] = 0.0;
+}
+
+[numthreads(THREADS, 1, 1)]
+void InitializeNozzleEmission(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    float directionLength = length(_EmitterDirection);
+    float3 direction = directionLength > 0.001 ? _EmitterDirection / directionLength : float3(0.0, -1.0, 0.0);
+    if (length(direction) < 0.001)
+    {
+        direction = float3(0.0, -1.0, 0.0);
+    }
+
+    float3 right;
+    float3 up;
+    BasisFromDirection(direction, right, up);
+    float angle = Random01(index * 41u + 7u) * PI * 2.0;
+    float radius = sqrt(Random01(index * 313u + 11u)) * max(_BucketNozzleRadius, _ParticleRadius);
+    float streamOffset = (float)(index % 96u) * max(_ParticleRadius * 1.6, _InitialSpacing * 0.5);
+
+    ParticleState particle;
+    particle.position = _BucketNozzleLocalPosition + right * cos(angle) * radius + up * sin(angle) * radius - direction * streamOffset;
+    particle.velocity = direction * max(_EmitterSpeed, 0.5) + RandomUnitVector(index + 23u) * _EmitterSpread;
+    particle.density = _RestDensity;
+    particle.pressure = 0.0;
+    _Particles[index] = particle;
+    _Forces[index] = 0.0;
+}
+
+[numthreads(THREADS, 1, 1)]
 void ClearGrid(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
@@ -178,6 +279,77 @@ void ClearGrid(uint3 id : SV_DispatchThreadID)
     {
         _OverflowCounters[0] = 0;
     }
+}
+
+void CollideBounds(inout ParticleState particle, float3 boundsSize)
+{
+    float3 halfBounds = boundsSize * 0.5 - _WallOffset;
+    float3 minBounds = -halfBounds;
+    float3 maxBounds = halfBounds;
+
+    [unroll]
+    for (int axis = 0; axis < 3; axis++)
+    {
+        if (particle.position[axis] < minBounds[axis])
+        {
+            particle.position[axis] = minBounds[axis];
+            particle.velocity[axis] = abs(particle.velocity[axis]) * _CollisionDamping;
+            particle.velocity[(axis + 1) % 3] *= 1.0 - _TangentDamping;
+            particle.velocity[(axis + 2) % 3] *= 1.0 - _TangentDamping;
+        }
+        else if (particle.position[axis] > maxBounds[axis])
+        {
+            particle.position[axis] = maxBounds[axis];
+            particle.velocity[axis] = -abs(particle.velocity[axis]) * _CollisionDamping;
+            particle.velocity[(axis + 1) % 3] *= 1.0 - _TangentDamping;
+            particle.velocity[(axis + 2) % 3] *= 1.0 - _TangentDamping;
+        }
+    }
+}
+
+bool IsNearNozzle(float3 position)
+{
+    return distance(position, _BucketNozzleLocalPosition) <= max(_BucketNozzleRadius, _ParticleRadius) * 1.75;
+}
+
+void CollideBucket(inout ParticleState particle)
+{
+    float radius = max(_BucketRadius - max(_WallOffset, _BucketWallThickness * 0.5), _ParticleRadius);
+    float halfHeight = max(_BucketHeight * 0.5, _ParticleRadius);
+    float bottomY = _BucketLocalCenter.y + _BucketBottomOffset + _WallOffset;
+    float topY = _BucketLocalCenter.y + halfHeight;
+    float3 relative = particle.position - _BucketLocalCenter;
+    float radial = length(relative.xz);
+    bool nozzleExit = _AllowNozzleExit != 0 && IsNearNozzle(particle.position);
+
+    if (radial > radius && !nozzleExit)
+    {
+        float2 normal2 = radial > 0.00001 ? relative.xz / radial : float2(1.0, 0.0);
+        float3 normal = float3(normal2.x, 0.0, normal2.y);
+        particle.position.xz = _BucketLocalCenter.xz + normal2 * radius;
+
+        float normalVelocity = dot(particle.velocity, normal);
+        if (normalVelocity > 0.0)
+        {
+            particle.velocity -= normal * normalVelocity * (1.0 + _CollisionDamping);
+            particle.velocity.y *= 1.0 - _TangentDamping;
+        }
+    }
+
+    if (particle.position.y < bottomY && !nozzleExit)
+    {
+        particle.position.y = bottomY;
+        particle.velocity.y = abs(particle.velocity.y) * _CollisionDamping;
+        particle.velocity.xz *= 1.0 - _TangentDamping;
+    }
+    else if (particle.position.y > topY)
+    {
+        particle.position.y = topY;
+        particle.velocity.y = -abs(particle.velocity.y) * _CollisionDamping;
+        particle.velocity.xz *= 1.0 - _TangentDamping;
+    }
+
+    CollideBounds(particle, max(_ExternalBoundsSize, float3(0.1, 0.1, 0.1)));
 }
 
 [numthreads(THREADS, 1, 1)]
@@ -328,6 +500,41 @@ void Integrate(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(THREADS, 1, 1)]
+void EmitFromNozzle(uint3 id : SV_DispatchThreadID)
+{
+    uint emitIndex = id.x;
+    if (emitIndex >= (uint)_EmitCount)
+    {
+        return;
+    }
+
+    uint index = (uint)((_EmitterStartIndex + (int)emitIndex) % max(_ParticleCount, 1));
+    float directionLength = length(_EmitterDirection);
+    float3 direction = directionLength > 0.001 ? _EmitterDirection / directionLength : float3(0.0, -1.0, 0.0);
+    if (length(direction) < 0.001)
+    {
+        direction = float3(0.0, -1.0, 0.0);
+    }
+
+    float3 right;
+    float3 up;
+    BasisFromDirection(direction, right, up);
+
+    uint seed = (uint)_EmitterSeed + emitIndex * 1013u;
+    float angle = Random01(seed + 3u) * PI * 2.0;
+    float radius = sqrt(Random01(seed + 11u)) * max(_EmitterRadius, _ParticleRadius);
+    float3 randomSpread = RandomUnitVector(seed + 29u) * _EmitterSpread;
+
+    ParticleState particle;
+    particle.position = _EmitterLocalPosition + right * cos(angle) * radius + up * sin(angle) * radius;
+    particle.velocity = _EmitterInheritedVelocity + direction * _EmitterSpeed + randomSpread;
+    particle.density = _RestDensity;
+    particle.pressure = 0.0;
+    _Particles[index] = particle;
+    _Forces[index] = 0.0;
+}
+
+[numthreads(THREADS, 1, 1)]
 void HandleBoxCollisions(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
@@ -338,5 +545,19 @@ void HandleBoxCollisions(uint3 id : SV_DispatchThreadID)
 
     ParticleState particle = _Particles[index];
     Collide(particle);
+    _Particles[index] = particle;
+}
+
+[numthreads(THREADS, 1, 1)]
+void HandleBucketCollisions(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    ParticleState particle = _Particles[index];
+    CollideBucket(particle);
     _Particles[index] = particle;
 }
