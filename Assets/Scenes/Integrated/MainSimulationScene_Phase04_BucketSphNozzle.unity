@@ -5033,8 +5033,14 @@ MonoBehaviour:
   paintAmountPerParticle: 0.001
   drainRateMultiplier: 1
   minEmissionThreshold: 0.001
+  referenceNozzleRadius: 0.024
+  viscosityFactor: 1
+  minFlowWhenNotEmpty: 0.08
+  stopAtEmpty: 1
   allowInfiniteDebugEmission: 0
   resetOnPlay: 1
+  currentFlowFactor: 1
+  estimatedSecondsRemaining: 0
 --- !u!114 &4200000009
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5054,11 +5060,24 @@ MonoBehaviour:
   minLocalY: -0.37
   maxLocalY: -0.035
   radius: 0.36
-  color: {r: 1, g: 0.24, b: 0.04, a: 0.72}
-  alpha: 0.72
+  localCenterXZ: {x: 0, y: 0}
+  color: {r: 1, g: 0.24, b: 0.04, a: 0.86}
+  alpha: 0.86
   emptyAlpha: 0.02
   material: {fileID: 2100000, guid: 7b25a2de81e643659a9edbe8bd5fb212, type: 2}
   segments: 48
+  verticalPaddingFromBottom: 0.08
+  topPaddingFromRim: 0.16
+  surfaceRadiusScale: 0.88
+  forceVisibleInDemo: 1
+  debugRaiseOffset: 0.035
+  doubleSidedSurface: 1
+  showCutawayHelper: 0
+  showSurfaceDisk: 1
+  showSideVolume: 1
+  showMeniscusRing: 1
+  sideVolumeAlpha: 0.36
+  meniscusAlpha: 0.92
   sloshStrength: 0.18
   sloshDamping: 0.12
   maxSloshAngle: 9

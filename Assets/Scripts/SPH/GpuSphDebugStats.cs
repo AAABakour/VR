@@ -3,18 +3,26 @@ using UnityEngine;
 public class GpuSphDebugStats : MonoBehaviour
 {
     public int simulatedParticleCount;
+    public int requestedParticleCount;
+    public int allocatedParticleCount;
+    public int gpuBufferParticleCapacity;
     public int activeParticleCount;
     public int inactiveParticleCount;
     public int totalEmittedParticleCount;
     public int renderedParticleCount;
+    public int allocatedRenderedCapacity;
+    public int expectedRenderedParticleCount;
     public int renderStride;
+    public int particleStrideBytes;
     public float estimatedGpuMemoryMb;
     public float estimatedParticleBufferMemoryMb;
     public float estimatedGridMemoryMb;
     public float estimatedTotalGpuMemoryMb;
     public string activeMode;
+    public string runtimeProfileLabel;
     public string simulationDomain;
     public string simulationFrame;
+    public bool isProfessorBenchmarkActive;
     public Vector3Int gridDimensions;
     public Vector3 boundsSize;
     public int maxParticlesPerCell;
@@ -63,18 +71,26 @@ public class GpuSphDebugStats : MonoBehaviour
         }
 
         simulatedParticleCount = solver.ParticleCount;
+        requestedParticleCount = solver.RequestedParticleCount;
+        allocatedParticleCount = solver.AllocatedParticleCount;
+        gpuBufferParticleCapacity = solver.GpuBufferParticleCapacity;
         activeParticleCount = solver.ActiveParticleCount;
         inactiveParticleCount = solver.InactiveParticleCount;
         totalEmittedParticleCount = solver.TotalEmittedParticleCount;
         renderedParticleCount = solver.RenderedParticleCount;
+        allocatedRenderedCapacity = solver.AllocatedRenderedCapacity;
+        expectedRenderedParticleCount = solver.ExpectedRenderedParticleCount;
         renderStride = solver.RenderStride;
+        particleStrideBytes = solver.ParticleStrideBytes;
         estimatedGpuMemoryMb = solver.EstimatedGpuMemoryMb;
         estimatedParticleBufferMemoryMb = solver.EstimatedParticleBufferMemoryMb;
         estimatedGridMemoryMb = solver.EstimatedGridMemoryMb;
         estimatedTotalGpuMemoryMb = solver.EstimatedTotalGpuMemoryMb;
         activeMode = solver.ActiveModeLabel;
+        runtimeProfileLabel = solver.RuntimeProfileLabel;
         simulationDomain = solver.SimulationDomainLabel;
         simulationFrame = solver.SimulationFrameLabel;
+        isProfessorBenchmarkActive = solver.IsProfessorBenchmarkActive;
         gridDimensions = solver.GridDimensions;
         boundsSize = solver.BoundsSize;
         maxParticlesPerCell = solver.MaxParticlesPerCell;

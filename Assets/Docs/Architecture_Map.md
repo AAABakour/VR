@@ -148,6 +148,8 @@ Current status:
 - Phase 4.4 adds `BucketPaintReservoir` so nozzle emission consumes a finite amount of bucket paint instead of running forever.
 - Phase 4.4 adds `BucketInternalFluidVisual`, a transparent reservoir surface that follows bucket motion and maps height to reservoir fill percent. This is a visual fill indicator, not SPH surface reconstruction.
 - Finite nozzle drain flow is controlled by reservoir availability, paint amount per particle, drain multiplier, and a fill-percent flow factor. Empty reservoirs stop new GPU particle activation while already active particles continue normally.
+- Phase 4.5 improves `BucketInternalFluidVisual` with proxy-centered placement, double-sided surface mesh, side-volume band, meniscus ring, clamped slosh, and property-block material updates so Play Mode does not mutate material assets.
+- Phase 4.5 improves reservoir telemetry and drain realism with nozzle-radius, viscosity, minimum non-empty flow, stop-at-empty behavior, and estimated seconds remaining.
 
 ## Painting
 
@@ -187,6 +189,8 @@ Current status:
 - Phase 4.2 adds keyboard controls and a more complete SPH readout for mode, profile, particle counts, render stride, memory, grid overflow, nozzle world position, and solver buffer state.
 - Phase 4.3 adds active/inactive/emitted particle counters and lifetime/frame labels to the SPH debug readout.
 - Phase 4.4 adds finite paint readouts: remaining amount, fill percent, requested versus actual emission, last consumed amount, and reservoir state including `EMPTY` and explicit `INFINITE DEBUG`.
+- Phase 4.5 upgrades `BucketSphDebugUI` into a persistent high-sorting-order HUD with a dark panel, larger text, explicit allocated/active/rendered-capacity separation, and Professor 1M verification.
+- The HUD reports whether the solver actually allocated a 1,000,000-particle buffer before labeling Professor benchmark mode as active.
 
 ## Legacy
 

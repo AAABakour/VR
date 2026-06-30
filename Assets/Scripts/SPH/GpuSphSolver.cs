@@ -86,7 +86,32 @@ public class GpuSphSolver : MonoBehaviour
         get { return particleCount; }
     }
 
+    public int AllocatedParticleCount
+    {
+        get { return particleCount; }
+    }
+
+    public int RequestedParticleCount
+    {
+        get { return ActiveSettings != null ? ActiveSettings.particleCount : 0; }
+    }
+
+    public int GpuBufferParticleCapacity
+    {
+        get { return particleBuffer != null ? particleCount : 0; }
+    }
+
+    public int ParticleStrideBytes
+    {
+        get { return GpuSphBufferUtility.ParticleStrideBytes; }
+    }
+
     public int RenderStride
+    {
+        get { return renderStride; }
+    }
+
+    public int RuntimeRenderStride
     {
         get { return renderStride; }
     }
@@ -94,6 +119,16 @@ public class GpuSphSolver : MonoBehaviour
     public int RenderedParticleCount
     {
         get { return Mathf.CeilToInt(particleCount / (float)Mathf.Max(1, renderStride)); }
+    }
+
+    public int AllocatedRenderedCapacity
+    {
+        get { return RenderedParticleCount; }
+    }
+
+    public int ExpectedRenderedParticleCount
+    {
+        get { return RenderedParticleCount; }
     }
 
     public float EstimatedGpuMemoryMb
@@ -119,6 +154,21 @@ public class GpuSphSolver : MonoBehaviour
     public string ActiveModeLabel
     {
         get { return ActiveSettings != null ? ActiveSettings.modeLabel : "Unconfigured"; }
+    }
+
+    public string RuntimeProfileLabel
+    {
+        get { return ActiveModeLabel; }
+    }
+
+    public bool IsProfessorBenchmarkActive
+    {
+        get
+        {
+            return ActiveSettings != null &&
+                ActiveSettings.modeLabel == SimulationMode.ProfessorBenchmark.ToString() &&
+                particleCount >= 1000000;
+        }
     }
 
     public Vector3Int GridDimensions

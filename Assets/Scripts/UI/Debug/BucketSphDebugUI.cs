@@ -14,7 +14,8 @@ public class BucketSphDebugUI : MonoBehaviour
     public Vector2 anchoredPosition = new Vector2(14f, -14f);
 
     private Text readout;
-    private readonly StringBuilder builder = new StringBuilder(512);
+    private Image backgroundPanel;
+    private readonly StringBuilder builder = new StringBuilder(1600);
 
     private void Awake()
     {
@@ -35,7 +36,8 @@ public class BucketSphDebugUI : MonoBehaviour
         }
 
         builder.Length = 0;
-        builder.AppendLine("Bucket SPH Phase 4.4");
+        builder.AppendLine("BUCKET SPH PHASE 4.5");
+        builder.AppendLine("A - Mode");
 
         if (controller != null)
         {
@@ -43,6 +45,10 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine(controller.CurrentMode.ToString());
             builder.Append("Profile: ");
             builder.AppendLine(controller.ActiveProfile != null ? controller.ActiveProfile.name : "Runtime");
+            builder.Append("Profile requested particles: ");
+            builder.AppendLine(controller.ActiveProfile != null ? controller.ActiveProfile.targetParticleCount.ToString("N0") : "Unknown");
+            builder.Append("Emission enabled: ");
+            builder.AppendLine(nozzleEmitter != null && nozzleEmitter.emitOnUpdate ? "Yes" : "No");
 
             if (controller.CurrentMode == BucketSphMode.InternalAndEmission && !controller.internalAndEmissionSupported)
             {
@@ -52,55 +58,70 @@ public class BucketSphDebugUI : MonoBehaviour
 
         if (stats != null)
         {
-            builder.Append("Simulated: ");
-            builder.Append(stats.simulatedParticleCount);
-            builder.Append("  Active: ");
-            builder.Append(stats.activeParticleCount);
-            builder.Append("  Inactive: ");
-            builder.AppendLine(stats.inactiveParticleCount.ToString());
-            builder.Append("Rendered particles: ");
-            builder.AppendLine(stats.renderedParticleCount.ToString());
-            builder.Append("Total emitted: ");
-            builder.AppendLine(stats.totalEmittedParticleCount.ToString());
-            builder.Append("Render stride: ");
-            builder.AppendLine(stats.renderStride.ToString());
             builder.Append("Domain: ");
             builder.Append(stats.simulationDomain);
             builder.Append("  Frame: ");
             builder.AppendLine(stats.simulationFrame);
-            builder.Append("GPU MB: ");
-            builder.AppendLine(stats.estimatedTotalGpuMemoryMb.ToString("0.0"));
-            builder.Append("Grid: ");
-            builder.AppendLine(stats.gridDimensions.ToString());
-            builder.Append("Max/cell: ");
-            builder.Append(stats.maxParticlesPerCell);
-            builder.Append("  Overflow: ");
-            builder.AppendLine(stats.gridOverflowCount.ToString());
-            builder.Append("Solver initialized: ");
-            builder.Append(stats.solverInitialized ? "Yes" : "No");
-            builder.Append("  Buffers: ");
-            builder.AppendLine(stats.buffersValid ? "Valid" : "Invalid");
-            builder.Append("Lifetime: ");
-            builder.Append(stats.emitterLifetime.ToString("0.0"));
-            builder.AppendLine("s");
 
-            if (stats.gridOverflowCount > 0)
+            builder.AppendLine();
+            builder.AppendLine("B - Particle Verification");
+            builder.Append("Solver requested: ");
+            builder.AppendLine(stats.requestedParticleCount.ToString("N0"));
+            builder.Append("Solver allocated: ");
+            builder.AppendLine(stats.allocatedParticleCount.ToString("N0"));
+            builder.Append("GPU buffer capacity: ");
+            builder.AppendLine(stats.gpuBufferParticleCapacity.ToString("N0"));
+            builder.Append("Active particles: ");
+            builder.AppendLine(stats.activeParticleCount.ToString("N0"));
+            builder.Append("Inactive particles: ");
+            builder.AppendLine(stats.inactiveParticleCount.ToString("N0"));
+            builder.Append("Total emitted: ");
+            builder.AppendLine(stats.totalEmittedParticleCount.ToString("N0"));
+            builder.Append("Rendered capacity: ");
+            builder.AppendLine(stats.allocatedRenderedCapacity.ToString("N0"));
+            builder.Append("Render stride: ");
+            builder.AppendLine(stats.renderStride.ToString("N0"));
+            builder.Append("Particle stride bytes: ");
+            builder.AppendLine(stats.particleStrideBytes.ToString());
+            builder.Append("Buffers valid: ");
+            builder.Append(stats.buffersValid ? "Yes" : "No");
+            builder.Append("  Solver initialized: ");
+            builder.AppendLine(stats.solverInitialized ? "Yes" : "No");
+
+            builder.AppendLine();
+            builder.AppendLine("C - Professor 1M Verification");
+            if (stats.isProfessorBenchmarkActive)
             {
-                builder.AppendLine("WARNING: SPH grid overflow detected.");
+                builder.AppendLine("PROFESSOR 1M MODE ACTIVE");
+                builder.Append("Allocated simulated particles: ");
+                builder.AppendLine(stats.allocatedParticleCount.ToString("N0"));
+                builder.Append("Rendered particles at current stride: ");
+                builder.AppendLine(stats.expectedRenderedParticleCount.ToString("N0"));
+            }
+            else
+            {
+                builder.AppendLine("Current profile is not 1M benchmark");
+                builder.AppendLine("Press F3 for Professor 1M");
             }
         }
 
+        builder.AppendLine();
+        builder.AppendLine("D - Reservoir");
         if (nozzleEmitter != null)
         {
             builder.Append("Emitter: ");
             builder.Append(nozzleEmitter.emitOnUpdate ? "On" : "Off");
             builder.Append(" @ ");
             builder.Append(nozzleEmitter.particlesPerSecond.ToString("0"));
+            builder.Append("/s  Effective: ");
+            builder.Append(nozzleEmitter.EffectiveEmissionRate.ToString("0"));
             builder.AppendLine("/s");
             builder.Append("Requested/frame: ");
             builder.Append(nozzleEmitter.RequestedThisFrame);
             builder.Append("  Actual/frame: ");
             builder.AppendLine(nozzleEmitter.ActualEmittedThisFrame.ToString());
+            builder.Append("Flow factor: ");
+            builder.AppendLine(nozzleEmitter.LastFlowFactor.ToString("0.00"));
             builder.Append("Last consumed: ");
             builder.AppendLine(nozzleEmitter.LastConsumedPaintAmount.ToString("0.0000"));
             builder.Append("Particle lifetime: ");
@@ -126,6 +147,37 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine("%");
             builder.Append("Reservoir: ");
             builder.AppendLine(GetReservoirStatus());
+            builder.Append("Estimated seconds remaining: ");
+            builder.AppendLine(FormatSeconds(reservoir.estimatedSecondsRemaining));
+        }
+
+        if (stats != null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("E - SPH Health");
+            builder.Append("GPU memory MB: ");
+            builder.AppendLine(stats.estimatedTotalGpuMemoryMb.ToString("0.0"));
+            builder.Append("Grid: ");
+            builder.AppendLine(stats.gridDimensions.ToString());
+            builder.Append("Max particles/cell: ");
+            builder.Append(stats.maxParticlesPerCell);
+            builder.Append("  Overflow: ");
+            builder.AppendLine(stats.gridOverflowCount.ToString());
+            builder.Append("FPS: ");
+            builder.AppendLine(stats.fps.ToString("0"));
+            builder.Append("Substeps: ");
+            builder.Append(stats.substeps);
+            builder.Append("  Timestep: ");
+            builder.AppendLine(stats.timestep.ToString("0.0000"));
+            builder.Append("Smoothing: ");
+            builder.Append(stats.smoothingLength.ToString("0.000"));
+            builder.Append("  Viscosity: ");
+            builder.AppendLine(stats.viscosity.ToString("0.000"));
+
+            if (stats.gridOverflowCount > 0)
+            {
+                builder.AppendLine("WARNING: SPH grid overflow detected.");
+            }
         }
 
         if (motionDataProvider != null)
@@ -134,9 +186,11 @@ public class BucketSphDebugUI : MonoBehaviour
             builder.AppendLine(motionDataProvider.WorldVelocity.magnitude.ToString("0.00"));
         }
 
-        builder.AppendLine("Controls: R Reset/refill | E Emit | P Add paint | I DEBUG infinite");
-        builder.AppendLine("Modes: 1 Internal | 2 Nozzle | 3 Mixed future");
-        builder.AppendLine("Profiles: F1 Bucket Demo | F2 Presentation | F3 Professor 1M | F4 VR Safe");
+        builder.AppendLine();
+        builder.AppendLine("F - Controls");
+        builder.AppendLine("R Reset/refill | E Toggle emission | P Add paint");
+        builder.AppendLine("1 Internal | 2 Nozzle | F1 Demo | F2 Presentation");
+        builder.AppendLine("F3 Professor 1M | F4 VR Safe | I DEBUG infinite");
 
         readout.text = builder.ToString();
     }
@@ -354,25 +408,47 @@ public class BucketSphDebugUI : MonoBehaviour
             canvasObject.transform.SetParent(transform, false);
             canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasObject.AddComponent<CanvasScaler>();
+            canvas.sortingOrder = 5000;
+            CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
             canvasObject.AddComponent<GraphicRaycaster>();
         }
+        else
+        {
+            canvas.sortingOrder = Mathf.Max(canvas.sortingOrder, 5000);
+        }
+
+        GameObject panelObject = new GameObject("BucketSphDebugPanel");
+        panelObject.transform.SetParent(canvas.transform, false);
+        backgroundPanel = panelObject.AddComponent<Image>();
+        backgroundPanel.color = new Color(0.02f, 0.025f, 0.03f, 0.82f);
+        backgroundPanel.raycastTarget = false;
+
+        RectTransform panelRect = backgroundPanel.rectTransform;
+        panelRect.anchorMin = new Vector2(0f, 1f);
+        panelRect.anchorMax = new Vector2(0f, 1f);
+        panelRect.pivot = new Vector2(0f, 1f);
+        panelRect.anchoredPosition = anchoredPosition;
+        panelRect.sizeDelta = new Vector2(690f, 900f);
 
         GameObject textObject = new GameObject("BucketSphDebugReadout");
-        textObject.transform.SetParent(canvas.transform, false);
+        textObject.transform.SetParent(panelObject.transform, false);
         readout = textObject.AddComponent<Text>();
         readout.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        readout.fontSize = 14;
-        readout.color = new Color(0.86f, 0.95f, 1f, 0.95f);
+        readout.fontSize = 16;
+        readout.color = new Color(0.94f, 0.97f, 1f, 1f);
         readout.alignment = TextAnchor.UpperLeft;
         readout.raycastTarget = false;
+        readout.horizontalOverflow = HorizontalWrapMode.Wrap;
+        readout.verticalOverflow = VerticalWrapMode.Overflow;
 
         RectTransform rect = readout.rectTransform;
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
         rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = new Vector2(600f, 500f);
+        rect.offsetMin = new Vector2(16f, 14f);
+        rect.offsetMax = new Vector2(-16f, -14f);
     }
 
     private string GetReservoirStatus()
@@ -403,5 +479,20 @@ public class BucketSphDebugUI : MonoBehaviour
         }
 
         return "DRAINING";
+    }
+
+    private static string FormatSeconds(float seconds)
+    {
+        if (float.IsPositiveInfinity(seconds))
+        {
+            return "Infinite debug";
+        }
+
+        if (seconds <= 0f)
+        {
+            return "0.0s";
+        }
+
+        return seconds.ToString("0.0") + "s";
     }
 }

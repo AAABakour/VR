@@ -33,6 +33,8 @@ public class BucketSphNozzleEmitter : MonoBehaviour
     private int requestedThisFrame;
     private int actualEmittedThisFrame;
     private float lastConsumedPaintAmount;
+    private float effectiveEmissionRate;
+    private float lastFlowFactor;
 
     public int EmittedThisFrame
     {
@@ -57,6 +59,16 @@ public class BucketSphNozzleEmitter : MonoBehaviour
     public float LastConsumedPaintAmount
     {
         get { return lastConsumedPaintAmount; }
+    }
+
+    public float EffectiveEmissionRate
+    {
+        get { return effectiveEmissionRate; }
+    }
+
+    public float LastFlowFactor
+    {
+        get { return lastFlowFactor; }
     }
 
     public Vector3 NozzleWorldPosition
@@ -92,10 +104,13 @@ public class BucketSphNozzleEmitter : MonoBehaviour
 
         if (!emitOnUpdate || solver == null || Time.deltaTime <= 0f)
         {
+            effectiveEmissionRate = 0f;
             return;
         }
 
-        float effectiveRate = particlesPerSecond * GetReservoirFlowFactor();
+        lastFlowFactor = GetReservoirFlowFactor();
+        float effectiveRate = particlesPerSecond * lastFlowFactor;
+        effectiveEmissionRate = effectiveRate;
         emissionAccumulator += effectiveRate * Time.deltaTime;
         int emitCount = Mathf.Min(Mathf.FloorToInt(emissionAccumulator), Mathf.Max(1, maxParticlesPerFrame));
         requestedThisFrame = emitCount;
@@ -195,6 +210,8 @@ public class BucketSphNozzleEmitter : MonoBehaviour
         actualEmittedThisFrame = 0;
         lastConsumedPaintAmount = 0f;
         emissionBlockedByEmptyReservoir = false;
+        effectiveEmissionRate = 0f;
+        lastFlowFactor = 0f;
     }
 
     private float GetReservoirFlowFactor()
@@ -206,7 +223,7 @@ public class BucketSphNozzleEmitter : MonoBehaviour
 
         if (reservoir.allowInfiniteDebugEmission)
         {
-            return Mathf.Max(0f, reservoir.drainRateMultiplier);
+            return reservoir.CalculateFlowFactor(nozzleRadius);
         }
 
         if (reservoir.IsEmpty)
@@ -216,7 +233,7 @@ public class BucketSphNozzleEmitter : MonoBehaviour
             return 0f;
         }
 
-        float fillFactor = Mathf.Sqrt(Mathf.Max(reservoir.FillPercent, 0.02f));
-        return fillFactor * reservoir.drainRateMultiplier;
+        reservoir.EstimateSecondsRemaining(particlesPerSecond, nozzleRadius);
+        return reservoir.CalculateFlowFactor(nozzleRadius);
     }
 }

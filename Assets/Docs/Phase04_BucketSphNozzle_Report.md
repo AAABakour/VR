@@ -270,6 +270,68 @@ Known limitations:
 - The finite reservoir is a demo control model and not a full volume-conserving SPH source.
 - Canvas painting, splats, impact extraction, and GPU-to-canvas bridge work remain Phase 5.
 
+## Phase 4.5 Internal Paint Visibility and Simulation Telemetry
+
+Phase 4.5 was needed because the Phase 4.4 reservoir logic worked, but the demo could still look like an empty bucket with a hidden emitter. The internal paint material had been driven to a very low alpha value during runtime material updates, and the HUD did not make the actual simulation allocation obvious enough for review or professor benchmark verification.
+
+Internal paint visibility fixes:
+
+- `MAT_BucketInternalPaint` is reset to a visible red/orange transparent paint alpha.
+- `BucketInternalFluidVisual` no longer writes color or alpha directly to the shared material asset at runtime.
+- Runtime color, side-volume alpha, and meniscus alpha are applied through `MaterialPropertyBlock`, so Play Mode cannot permanently lower the material asset alpha.
+- The visual now uses `BucketCollisionProxy` as the source of truth for bucket center, bottom, radius, height, and wall thickness.
+- The paint surface local X/Z comes from the proxy center instead of assuming the bucket is centered at `(0, 0)`.
+- Fill height maps from bottom padding to rim padding, then follows `BucketPaintReservoir.FillPercent`.
+
+Visual realism improvements:
+
+- The internal reservoir is now a surface disk plus a thin side-volume band and a darker meniscus ring.
+- The disk and ring are double-sided so the normal camera can see the surface from above.
+- The surface has a small clamped slosh tilt driven by bucket velocity and acceleration.
+- A demo raise offset keeps the surface readable without claiming true SPH surface extraction.
+
+Reservoir and drain behavior:
+
+- `BucketPaintReservoir` exposes flow parameters for reference nozzle radius, viscosity factor, minimum non-empty flow, and stop-at-empty behavior.
+- `BucketSphNozzleEmitter` uses the reservoir flow factor instead of behaving as an infinite emitter.
+- Flow is based on `sqrt(fillPercent)`, so a full bucket drains strongly, a half bucket drains moderately, and a low bucket weakens before stopping.
+- New GPU particles stop activating when the reservoir is empty; already active particles continue normally until lifetime or bounds deactivate them.
+
+Simulation telemetry and Professor 1M verification:
+
+- `GpuSphSolver` now exposes read-only verification values including requested particle count, allocated particle count, GPU buffer capacity, particle stride bytes, render stride, rendered capacity, and whether Professor 1M is actually active.
+- `GpuSphDebugStats` records these compact values without full particle buffer readback.
+- `BucketSphDebugUI` now creates a large screen-space overlay with a dark background panel and high sorting order.
+- The HUD separates:
+  - requested/profile particle count
+  - allocated simulated particles
+  - GPU buffer capacity
+  - active particles
+  - inactive particles
+  - rendered capacity after stride
+- Professor mode is confirmed only when the active runtime profile is `ProfessorBenchmark` and the allocated solver buffer is at least 1,000,000 particles.
+
+HUD fields that prove the simulation state:
+
+- current mode, profile, domain, frame, and emission state
+- profile requested particles
+- solver requested and allocated particles
+- GPU buffer particle capacity
+- active/inactive particle counts
+- total emitted
+- rendered capacity and render stride
+- particle stride bytes
+- buffer/solver validity
+- reservoir fill, remaining amount, status, flow factor, and estimated seconds remaining
+- GPU memory estimate, grid dimensions, overflow, FPS, substeps, timestep, smoothing length, and viscosity
+
+Known limitations:
+
+- The internal paint surface, side band, and meniscus are visual approximations, not final SPH surface reconstruction.
+- The reservoir is a finite demo control model, not a full incompressible volume coupling between internal SPH and emitted SPH.
+- `InternalAndEmission` remains postponed until a proper two-domain or two-solver design is added.
+- Canvas painting remains Phase 5. No SPH canvas impact extraction, splat generation, or `CanvasPainter` bridge is implemented here.
+
 ## Phase 5 Focus
 
 Phase 5 should add sparse GPU impact extraction and a controlled bridge from SPH impacts to canvas painting. That work should avoid full particle readback, avoid CPU particle loops, and keep legacy painting available until visual parity is proven.
