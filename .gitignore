@@ -1,36 +1,34 @@
-# Unity generated folders
-Library/
-Temp/
-Obj/
-Logs/
-UserSettings/
+# Unity generated files
+/Library/
+/Temp/
+/Obj/
+/obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
 
-# IDE / editor state
-.vs/
-.idea/
-.vscode/
-
-# Build outputs
-Build/
-Builds/
-
-# Generated project files
-*.csproj
-*.sln
-*.slnx
+# IDE and editor state
+/.vs/
+/.vscode/
 *.user
+*.userprefs
 *.pidb
 *.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
 
-# Misc generated or large local files
-Assets.zip
-*.apk
-*.aab
-*.unitypackage
-
-# Unity cache files
+# Unity/Visual Studio generated project files
+*.csproj
+*.unityproj
+*.sln
+*.suo
 *.tmp
-*.temp
-*.bak
-*.swp
 
+# OS files
+.DS_Store
+Thumbs.db

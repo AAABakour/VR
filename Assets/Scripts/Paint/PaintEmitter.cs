@@ -31,12 +31,23 @@ public class PaintEmitter : MonoBehaviour
     [Header("Flow Settings")]
     public float baseFlowRate = 0.35f;
     public float referenceHoleDiameter = 0.04f;
+    [Tooltip("Keeps the bucket draining like a real open hole instead of asymptotically slowing forever.")]
+    public bool finiteDrainMode = true;
+    [Range(0f, 0.6f)]
+    public float minimumFlowFractionWhileNotEmpty = 0.16f;
+    public float snapEmptyBelowAmount = 0.015f;
 
     [Header("Particle Emission Settings")]
     public float particlesPerUnitFlow = 90f;
     public float downwardStartSpeed = 1.8f;
     public float nozzleVelocityInfluence = 0.85f;
     public float randomSpread = 0.15f;
+
+    [Header("Performance Safety")]
+    [Tooltip("Prevents one slow frame or an extreme UI value from spawning a huge burst that freezes the project.")]
+    public bool clampParticleBurstPerFrame = true;
+    [Range(16, 600)] public int maxParticlesEmittedPerFrame = 160;
+    [Range(0f, 600f)] public float maxEmissionBacklog = 80f;
 
     [Header("Particle Size")]
     public float minParticleRadius = 0.018f;
@@ -61,6 +72,8 @@ public class PaintEmitter : MonoBehaviour
 
     private float remainingPaintAmount;
     private float emissionAccumulator;
+    private float currentFlowRate;
+    private int lastEmittedParticleCount;
 
     private Vector3 previousNozzlePosition;
     private Vector3 previousNozzleVelocity;
@@ -88,11 +101,15 @@ public class PaintEmitter : MonoBehaviour
     {
         if (remainingPaintAmount <= 0f)
         {
+            currentFlowRate = 0f;
+            lastEmittedParticleCount = 0;
             return;
         }
 
         if (particleSimulator == null)
         {
+            currentFlowRate = 0f;
+            lastEmittedParticleCount = 0;
             return;
         }
 
@@ -105,14 +122,38 @@ public class PaintEmitter : MonoBehaviour
         UpdateInternalSlosh(nozzleAcceleration, dt);
 
         float flowRate = CalculateFlowRate();
+        currentFlowRate = flowRate;
 
         remainingPaintAmount -= flowRate * dt;
+        if (finiteDrainMode && remainingPaintAmount <= snapEmptyBelowAmount)
+        {
+            remainingPaintAmount = 0f;
+        }
         remainingPaintAmount = Mathf.Max(remainingPaintAmount, 0f);
 
         emissionAccumulator += flowRate * particlesPerUnitFlow * dt;
 
-        int particlesToEmit = Mathf.FloorToInt(emissionAccumulator);
+        if (clampParticleBurstPerFrame)
+        {
+            emissionAccumulator = Mathf.Min(emissionAccumulator, Mathf.Max(maxEmissionBacklog, maxParticlesEmittedPerFrame));
+        }
+
+        int desiredParticlesToEmit = Mathf.FloorToInt(emissionAccumulator);
+        int particlesToEmit = desiredParticlesToEmit;
+
+        if (clampParticleBurstPerFrame)
+        {
+            particlesToEmit = Mathf.Min(particlesToEmit, Mathf.Max(1, maxParticlesEmittedPerFrame));
+        }
+
         emissionAccumulator -= particlesToEmit;
+
+        if (clampParticleBurstPerFrame && desiredParticlesToEmit > particlesToEmit)
+        {
+            emissionAccumulator = Mathf.Min(emissionAccumulator, Mathf.Max(0f, maxEmissionBacklog));
+        }
+
+        lastEmittedParticleCount = particlesToEmit;
 
         for (int i = 0; i < particlesToEmit; i++)
         {
@@ -182,7 +223,10 @@ public class PaintEmitter : MonoBehaviour
         float holeFactor = holeDiameter / referenceHoleDiameter;
         holeFactor *= holeFactor;
 
-        float amountFactor = Mathf.Clamp01(remainingPaintAmount / initialPaintAmount);
+        float fill01 = initialPaintAmount > 0f ? Mathf.Clamp01(remainingPaintAmount / initialPaintAmount) : 0f;
+        float amountFactor = finiteDrainMode
+            ? Mathf.Lerp(Mathf.Clamp01(minimumFlowFractionWhileNotEmpty), 1f, Mathf.Pow(fill01, 0.35f))
+            : fill01;
 
         float shapeFactor = GetNozzleShapeFlowMultiplier();
 
@@ -368,10 +412,22 @@ public class PaintEmitter : MonoBehaviour
         return new Vector3(offset.x, 0f, offset.y);
     }
 
+    public void ApplyPerformanceBudget(float flowRate, float particlesPerFlow, int burstLimit, float backlogLimit)
+    {
+        baseFlowRate = Mathf.Clamp(flowRate, 0f, 1.25f);
+        particlesPerUnitFlow = Mathf.Clamp(particlesPerFlow, 5f, 240f);
+        maxParticlesEmittedPerFrame = Mathf.Clamp(burstLimit, 16, 600);
+        maxEmissionBacklog = Mathf.Clamp(backlogLimit, 0f, 600f);
+        clampParticleBurstPerFrame = true;
+        emissionAccumulator = Mathf.Min(emissionAccumulator, maxEmissionBacklog);
+    }
+
     public void ResetEmitter()
     {
         remainingPaintAmount = initialPaintAmount;
         emissionAccumulator = 0f;
+        currentFlowRate = 0f;
+        lastEmittedParticleCount = 0;
 
         hasPreviousNozzlePosition = false;
         previousNozzleVelocity = Vector3.zero;
@@ -403,6 +459,79 @@ public class PaintEmitter : MonoBehaviour
             }
 
             return Mathf.Clamp01(remainingPaintAmount / initialPaintAmount);
+        }
+    }
+
+
+
+    public void RefillToInitialAmount()
+    {
+        remainingPaintAmount = Mathf.Max(0f, initialPaintAmount);
+        emissionAccumulator = 0f;
+        currentFlowRate = 0f;
+        lastEmittedParticleCount = 0;
+    }
+
+    public void SetRemainingPaintAmount(float amount)
+    {
+        remainingPaintAmount = Mathf.Clamp(amount, 0f, Mathf.Max(initialPaintAmount, 0.0001f));
+        if (remainingPaintAmount <= 0f)
+        {
+            emissionAccumulator = 0f;
+            currentFlowRate = 0f;
+            lastEmittedParticleCount = 0;
+        }
+    }
+
+    public void SetFill01(float normalizedFill)
+    {
+        normalizedFill = Mathf.Clamp01(normalizedFill);
+        remainingPaintAmount = Mathf.Max(0f, initialPaintAmount) * normalizedFill;
+        emissionAccumulator = 0f;
+        if (remainingPaintAmount <= 0f)
+        {
+            currentFlowRate = 0f;
+            lastEmittedParticleCount = 0;
+        }
+    }
+
+    public void PreserveFillWhenChangingCapacity(float newInitialAmount)
+    {
+        float oldFill = PaintFill01;
+        initialPaintAmount = Mathf.Max(0.0001f, newInitialAmount);
+        remainingPaintAmount = initialPaintAmount * oldFill;
+    }
+
+    public float CurrentFlowRate
+    {
+        get { return currentFlowRate; }
+    }
+
+    public int LastEmittedParticleCount
+    {
+        get { return lastEmittedParticleCount; }
+    }
+
+    public bool IsPaintEmpty
+    {
+        get { return remainingPaintAmount <= 0.0001f; }
+    }
+
+    public Vector3 SloshOffset
+    {
+        get { return sloshOffset; }
+    }
+
+    public float SloshIntensity01
+    {
+        get
+        {
+            if (!enableInternalSlosh || maxSloshOffset <= 0f)
+            {
+                return 0f;
+            }
+
+            return Mathf.Clamp01(sloshOffset.magnitude / maxSloshOffset);
         }
     }
 

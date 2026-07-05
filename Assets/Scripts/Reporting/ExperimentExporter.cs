@@ -17,6 +17,8 @@ public class ExperimentExporter : MonoBehaviour
     public string exportFolderName = "SwingingPaintBucketExports";
     public string imagePrefix = "Canvas";
     public string reportPrefix = "ExperimentReport";
+    public bool allowImageExport = true;
+    public bool allowReportExport = true;
 
     void Awake()
     {
@@ -48,53 +50,89 @@ public class ExperimentExporter : MonoBehaviour
 
     public void SaveImage()
     {
-        AutoFindReferences();
-
-        if (canvasPainter == null)
+        if (!allowImageExport)
         {
-            ShowStatus("Save Image failed: CanvasPainter not found.");
+            ShowStatus("Image export is disabled by performance profile.");
             return;
         }
 
-        canvasPainter.ForceApplyTexture();
-
-        Texture2D texture = canvasPainter.GetCanvasTexture();
-
-        if (texture == null)
+        try
         {
-            ShowStatus("Save Image failed: canvas texture is null.");
-            return;
+            AutoFindReferences();
+
+            if (canvasPainter == null)
+            {
+                ShowStatus("Save Image failed: CanvasPainter not found.");
+                return;
+            }
+
+            canvasPainter.ForceApplyTexture();
+
+            Texture2D texture = canvasPainter.GetCanvasTexture();
+
+            if (texture == null)
+            {
+                ShowStatus("Save Image failed: canvas texture is null.");
+                return;
+            }
+
+            string folderPath = GetExportFolderPath();
+            string filePath = Path.Combine(folderPath, imagePrefix + "_" + GetTimestamp() + ".png");
+
+            byte[] pngData = texture.EncodeToPNG();
+            File.WriteAllBytes(filePath, pngData);
+
+            Debug.Log("Canvas image saved to: " + filePath);
+            ShowStatus("Image saved:\n" + filePath);
         }
-
-        string folderPath = GetExportFolderPath();
-        string filePath = Path.Combine(folderPath, imagePrefix + "_" + GetTimestamp() + ".png");
-
-        byte[] pngData = texture.EncodeToPNG();
-        File.WriteAllBytes(filePath, pngData);
-
-        Debug.Log("Canvas image saved to: " + filePath);
-        ShowStatus("Image saved:\n" + filePath);
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+            ShowStatus("Save Image failed safely: " + ex.GetType().Name);
+        }
     }
 
     public void SaveReport()
     {
-        AutoFindReferences();
+        if (!allowReportExport)
+        {
+            ShowStatus("Report export is disabled by performance profile.");
+            return;
+        }
 
-        string folderPath = GetExportFolderPath();
-        string filePath = Path.Combine(folderPath, reportPrefix + "_" + GetTimestamp() + ".txt");
+        try
+        {
+            AutoFindReferences();
 
-        string reportText = BuildReportText();
+            string folderPath = GetExportFolderPath();
+            string filePath = Path.Combine(folderPath, reportPrefix + "_" + GetTimestamp() + ".txt");
 
-        File.WriteAllText(filePath, reportText, Encoding.UTF8);
+            string reportText = BuildReportText();
 
-        Debug.Log("Experiment report saved to: " + filePath);
-        ShowStatus("Report saved:\n" + filePath);
+            File.WriteAllText(filePath, reportText, Encoding.UTF8);
+
+            Debug.Log("Experiment report saved to: " + filePath);
+            ShowStatus("Report saved:\n" + filePath);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+            ShowStatus("Save Report failed safely: " + ex.GetType().Name);
+        }
     }
 
     public void SaveImageAndReport()
     {
-        SaveImage();
-        SaveReport();
+        try
+        {
+            SaveImage();
+            SaveReport();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+            ShowStatus("Save All failed safely: " + ex.GetType().Name);
+        }
     }
 
     private string BuildReportText()

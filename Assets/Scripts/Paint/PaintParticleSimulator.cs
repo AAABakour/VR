@@ -40,10 +40,20 @@ public class PaintParticleSimulator : MonoBehaviour
     public float viscosityAlignment = 0.09f;
     public int maxInteractionChecks = 16;
 
+    [Header("Runtime Performance Guardrails")]
+    public bool autoCullWhenOverBudget = true;
+    [Range(16, 1200)] public int maxParticlesSimulatedPerFrame = 1200;
+
     [Header("Impact Settings")]
     public float impactRadiusMultiplier = 1.2f;
     public float minImpactRadius = 0.015f;
     public float maxImpactRadius = 0.10f;
+
+    [Header("Surface Collision V2")]
+    public bool useExactCanvasPlaneCollision = true;
+    public bool rejectImpactsOutsideCanvas = true;
+    public float canvasBoundsPadding = 0.025f;
+    public bool enableLegacySecondarySpray = false;
 
     private struct PaintParticle
     {
@@ -131,7 +141,11 @@ public class PaintParticleSimulator : MonoBehaviour
         }
 
         float dt = Time.deltaTime;
-        float canvasY = canvasPainter.transform.position.y;
+
+        if (autoCullWhenOverBudget)
+        {
+            CullToParticleBudget();
+        }
 
         for (int i = particles.Count - 1; i >= 0; i--)
         {
@@ -159,15 +173,21 @@ public class PaintParticleSimulator : MonoBehaviour
 
             UpdateParticleVisual(particle);
 
-            if (particle.position.y <= canvasY)
+            if (TryResolveCanvasImpact(
+                particle.previousPosition,
+                particle.position,
+                out Vector3 hitPoint,
+                out Vector3 hitNormal,
+                out bool crossedCanvasPlane
+            ))
             {
-                Vector3 hitPoint = GetPlaneHitPoint(
-                    particle.previousPosition,
-                    particle.position,
-                    canvasY
-                );
+                PaintImpact(hitPoint, hitNormal, particle);
+                RemoveParticleAt(i);
+                continue;
+            }
 
-                PaintImpact(hitPoint, particle);
+            if (crossedCanvasPlane && rejectImpactsOutsideCanvas)
+            {
                 RemoveParticleAt(i);
                 continue;
             }
@@ -451,25 +471,88 @@ public class PaintParticleSimulator : MonoBehaviour
         );
     }
 
-    private Vector3 GetPlaneHitPoint(Vector3 previous, Vector3 current, float canvasY)
+    private bool TryResolveCanvasImpact(
+        Vector3 previousPosition,
+        Vector3 currentPosition,
+        out Vector3 hitPoint,
+        out Vector3 hitNormal,
+        out bool crossedCanvasPlane
+    )
     {
-        float deltaY = current.y - previous.y;
+        hitPoint = currentPosition;
+        hitNormal = Vector3.up;
+        crossedCanvasPlane = false;
 
-        if (Mathf.Abs(deltaY) < 0.0001f)
+        if (canvasPainter == null)
         {
-            return new Vector3(current.x, canvasY, current.z);
+            return false;
         }
 
-        float t = (canvasY - previous.y) / deltaY;
+        Transform surface = canvasPainter.transform;
+        hitNormal = useExactCanvasPlaneCollision ? surface.up.normalized : Vector3.up;
+        Vector3 planePoint = useExactCanvasPlaneCollision
+            ? GetCanvasVisualPlanePoint(surface)
+            : new Vector3(0f, GetCanvasVisualPlanePoint(surface).y, 0f);
+
+        float previousDistance = Vector3.Dot(previousPosition - planePoint, hitNormal);
+        float currentDistance = Vector3.Dot(currentPosition - planePoint, hitNormal);
+
+        crossedCanvasPlane = previousDistance > 0f && currentDistance <= 0f;
+
+        if (!crossedCanvasPlane)
+        {
+            return false;
+        }
+
+        float denominator = previousDistance - currentDistance;
+        float t = denominator > 0.00001f ? previousDistance / denominator : 1f;
         t = Mathf.Clamp01(t);
 
-        Vector3 hitPoint = Vector3.Lerp(previous, current, t);
-        hitPoint.y = canvasY;
+        hitPoint = Vector3.Lerp(previousPosition, currentPosition, t);
 
-        return hitPoint;
+        if (rejectImpactsOutsideCanvas && !IsPointInsideCanvasBounds(hitPoint))
+        {
+            return false;
+        }
+
+        return true;
     }
 
-    private void PaintImpact(Vector3 hitPoint, PaintParticle particle)
+
+    private Vector3 GetCanvasVisualPlanePoint(Transform surface)
+    {
+        if (surface == null)
+        {
+            return Vector3.zero;
+        }
+
+        MeshFilter filter = surface.GetComponent<MeshFilter>();
+
+        if (filter == null || filter.sharedMesh == null)
+        {
+            return surface.position;
+        }
+
+        Vector3 localTopCenter = new Vector3(0f, filter.sharedMesh.bounds.max.y, 0f);
+        return surface.TransformPoint(localTopCenter);
+    }
+    private bool IsPointInsideCanvasBounds(Vector3 worldPoint)
+    {
+        if (canvasPainter == null)
+        {
+            return false;
+        }
+
+        Vector3 localPoint = canvasPainter.transform.InverseTransformPoint(worldPoint);
+        float padding = Mathf.Max(0f, canvasBoundsPadding);
+
+        return localPoint.x >= -0.5f - padding &&
+               localPoint.x <= 0.5f + padding &&
+               localPoint.z >= -0.5f - padding &&
+               localPoint.z <= 0.5f + padding;
+    }
+
+    private void PaintImpact(Vector3 hitPoint, Vector3 surfaceNormal, PaintParticle particle)
     {
         float speed = particle.velocity.magnitude;
 
@@ -491,7 +574,7 @@ public class PaintParticleSimulator : MonoBehaviour
             PaintImpactData impactData = new PaintImpactData
             {
                 worldPosition = hitPoint,
-                surfaceNormal = Vector3.up,
+                surfaceNormal = surfaceNormal,
                 incomingVelocity = particle.velocity,
                 paintColor = particle.color,
                 particleRadius = impactRadius,
@@ -516,28 +599,38 @@ public class PaintParticleSimulator : MonoBehaviour
             );
         }
 
-        int sprayCount = Mathf.RoundToInt(
-            Mathf.Clamp(speed * viscosityFactor, 0f, 8f)
-        );
-
-        for (int i = 0; i < sprayCount; i++)
+        if (enableLegacySecondarySpray && impactEngine == null)
         {
-            Vector2 randomDirection = Random.insideUnitCircle.normalized;
-            float randomDistance = Random.Range(impactRadius * 1.4f, impactRadius * 4f);
-
-            Vector3 sprayPoint = hitPoint + new Vector3(
-                randomDirection.x * randomDistance,
-                0f,
-                randomDirection.y * randomDistance
+            int sprayCount = Mathf.RoundToInt(
+                Mathf.Clamp(speed * viscosityFactor, 0f, 8f)
             );
 
-            float sprayRadius = impactRadius * Random.Range(0.12f, 0.35f);
+            Vector3 tangentA = Vector3.ProjectOnPlane(Vector3.right, surfaceNormal);
+            if (tangentA.sqrMagnitude < 0.0001f)
+            {
+                tangentA = Vector3.ProjectOnPlane(Vector3.forward, surfaceNormal);
+            }
 
-            canvasPainter.PaintAtWorldPosition(
-                sprayPoint,
-                particle.color,
-                sprayRadius
-            );
+            tangentA.Normalize();
+            Vector3 tangentB = Vector3.Cross(surfaceNormal, tangentA).normalized;
+
+            for (int i = 0; i < sprayCount; i++)
+            {
+                Vector2 randomDirection = Random.insideUnitCircle.normalized;
+                float randomDistance = Random.Range(impactRadius * 1.4f, impactRadius * 4f);
+
+                Vector3 sprayPoint = hitPoint +
+                    tangentA * randomDirection.x * randomDistance +
+                    tangentB * randomDirection.y * randomDistance;
+
+                float sprayRadius = impactRadius * Random.Range(0.12f, 0.35f);
+
+                canvasPainter.PaintAtWorldPosition(
+                    sprayPoint,
+                    particle.color,
+                    sprayRadius
+                );
+            }
         }
     }
 
@@ -553,6 +646,32 @@ public class PaintParticleSimulator : MonoBehaviour
         ReleaseVisual(particle.visualIndex);
 
         particles.RemoveAt(index);
+    }
+
+    public void SetMaxParticlesSafely(int newMaxParticles)
+    {
+        maxParticles = Mathf.Clamp(newMaxParticles, 16, 1000000);
+        CullToParticleBudget();
+    }
+
+    public void ApplyPerformanceBudget(int particleBudget, int visualBudget, int interactionChecks, bool interactionsEnabled, bool visualDropletsEnabled)
+    {
+        maxParticles = Mathf.Clamp(particleBudget, 16, 1000000);
+        maxParticlesSimulatedPerFrame = Mathf.Clamp(particleBudget, 16, 1000000);
+        maxInteractionChecks = Mathf.Clamp(interactionChecks, 0, 64);
+        enableParticleInteraction = interactionsEnabled;
+        showVisualDroplets = visualDropletsEnabled;
+        visualPoolSize = Mathf.Clamp(visualBudget, 0, 10000);
+        CullToParticleBudget();
+    }
+
+    private void CullToParticleBudget()
+    {
+        int safeBudget = Mathf.Clamp(Mathf.Min(maxParticles, maxParticlesSimulatedPerFrame), 0, 1000000);
+        while (particles.Count > safeBudget)
+        {
+            RemoveParticleAt(0);
+        }
     }
 
     public void ResetParticles()

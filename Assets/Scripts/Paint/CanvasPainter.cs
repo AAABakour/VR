@@ -44,10 +44,44 @@ public class CanvasPainter : MonoBehaviour
     [Range(1, 12)]
     public int smearSteps = 5;
 
+    [Header("Wet Paint Relief Shading")]
+    public bool enableWetPaintShading = true;
+
+    [Range(0f, 0.35f)]
+    public float wetCenterDarkening = 0.10f;
+
+    [Range(0f, 0.45f)]
+    public float raisedRimHighlight = 0.18f;
+
+    [Range(0f, 0.18f)]
+    public float pigmentVariation = 0.05f;
+
+    [Range(0f, 1f)]
+    public float glossyWetAlphaBoost = 0.18f;
+
+    [Header("Real Fluid Film Texture Rendering")]
+    public bool renderFluidFilmFromSurfaceState = true;
+    public PaintSurfaceStateV2 fluidSurfaceState;
+    public float fluidTextureUpdateInterval = 0.04f;
+    public Color thinWetPaintColor = new Color(1f, 0.05f, 0.01f, 1f);
+    public Color thickWetPaintColor = new Color(0.55f, 0.0f, 0.0f, 1f);
+    public float fluidThicknessVisibility = 0.55f;
+    public float fluidWetAlpha = 0.92f;
+    public float fluidDryAlpha = 0.42f;
+    public float fluidSpecularStrength = 0.18f;
+    public float fluidNormalStrength = 3.2f;
+    public bool generateFluidNormalMap = true;
+
     private Texture2D canvasTexture;
     private Renderer canvasRenderer;
     private Color32[] pixelBuffer;
+    private Color32[] stainBuffer;
+    private Texture2D normalTexture;
+    private Color32[] normalBuffer;
     private bool textureDirty;
+    private bool normalTextureDirty;
+    private float fluidRenderTimer;
+    private int lastFluidRevision = -1;
 
     private struct SurfaceProfile
     {
@@ -66,6 +100,7 @@ public class CanvasPainter : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateFluidCompositeIfNeeded();
         ApplyTextureIfDirty();
     }
 
@@ -77,11 +112,24 @@ public class CanvasPainter : MonoBehaviour
         canvasTexture.wrapMode = TextureWrapMode.Clamp;
 
         pixelBuffer = new Color32[textureSize * textureSize];
+        stainBuffer = new Color32[textureSize * textureSize];
+        normalBuffer = new Color32[textureSize * textureSize];
 
         FillPixelBuffer(backgroundColor);
+        FillNeutralNormalBuffer();
 
         canvasTexture.SetPixels32(pixelBuffer);
         canvasTexture.Apply(false);
+
+        normalTexture = new Texture2D(textureSize, textureSize, TextureFormat.RGBA32, false, true);
+        normalTexture.wrapMode = TextureWrapMode.Clamp;
+        normalTexture.SetPixels32(normalBuffer);
+        normalTexture.Apply(false);
+
+        if (fluidSurfaceState == null)
+        {
+            fluidSurfaceState = UnityEngine.Object.FindFirstObjectByType<PaintSurfaceStateV2>();
+        }
 
         Material runtimeMaterial = canvasRenderer.material;
 
@@ -90,7 +138,33 @@ public class CanvasPainter : MonoBehaviour
             runtimeMaterial.SetTexture("_BaseMap", canvasTexture);
         }
 
+        if (runtimeMaterial.HasProperty("_Smoothness"))
+        {
+            runtimeMaterial.SetFloat("_Smoothness", 0.42f);
+        }
+
+        if (runtimeMaterial.HasProperty("_Metallic"))
+        {
+            runtimeMaterial.SetFloat("_Metallic", 0f);
+        }
+
         runtimeMaterial.mainTexture = canvasTexture;
+
+        if (runtimeMaterial.HasProperty("_BumpMap"))
+        {
+            runtimeMaterial.SetTexture("_BumpMap", normalTexture);
+            runtimeMaterial.EnableKeyword("_NORMALMAP");
+        }
+
+        if (runtimeMaterial.HasProperty("_NormalMap"))
+        {
+            runtimeMaterial.SetTexture("_NormalMap", normalTexture);
+        }
+
+        if (runtimeMaterial.HasProperty("_BumpScale"))
+        {
+            runtimeMaterial.SetFloat("_BumpScale", 0.85f);
+        }
     }
 
     private void ApplyTextureIfDirty()
@@ -103,6 +177,13 @@ public class CanvasPainter : MonoBehaviour
         canvasTexture.SetPixels32(pixelBuffer);
         canvasTexture.Apply(false);
 
+        if (normalTextureDirty && normalTexture != null && normalBuffer != null)
+        {
+            normalTexture.SetPixels32(normalBuffer);
+            normalTexture.Apply(false);
+            normalTextureDirty = false;
+        }
+
         textureDirty = false;
     }
 
@@ -114,11 +195,20 @@ public class CanvasPainter : MonoBehaviour
         }
 
         FillPixelBuffer(backgroundColor);
+        FillNeutralNormalBuffer();
 
         canvasTexture.SetPixels32(pixelBuffer);
         canvasTexture.Apply(false);
 
+        if (normalTexture != null && normalBuffer != null)
+        {
+            normalTexture.SetPixels32(normalBuffer);
+            normalTexture.Apply(false);
+        }
+
         textureDirty = false;
+        normalTextureDirty = false;
+        lastFluidRevision = -1;
     }
 
     private void FillPixelBuffer(Color color)
@@ -128,6 +218,26 @@ public class CanvasPainter : MonoBehaviour
         for (int i = 0; i < pixelBuffer.Length; i++)
         {
             pixelBuffer[i] = color32;
+
+            if (stainBuffer != null && i < stainBuffer.Length)
+            {
+                stainBuffer[i] = color32;
+            }
+        }
+    }
+
+    private void FillNeutralNormalBuffer()
+    {
+        if (normalBuffer == null)
+        {
+            return;
+        }
+
+        Color32 neutral = new Color32(128, 128, 255, 255);
+
+        for (int i = 0; i < normalBuffer.Length; i++)
+        {
+            normalBuffer[i] = neutral;
         }
     }
 
@@ -349,12 +459,16 @@ public class CanvasPainter : MonoBehaviour
                     continue;
                 }
 
-                float normalizedDistance = distance / irregularRadius;
+                float normalizedDistance = distance / Mathf.Max(irregularRadius, 0.0001f);
                 float softness = 1f - normalizedDistance;
 
                 float alpha = Mathf.Clamp01(softness * opacity);
 
-                BlendPixel(x, y, paintColor, alpha);
+                Color32 shadedColor = enableWetPaintShading
+                    ? BuildWetPaintShade(paintColor, normalizedDistance, noise, alpha)
+                    : paintColor;
+
+                BlendPixel(x, y, shadedColor, alpha);
             }
         }
     }
@@ -421,12 +535,42 @@ public class CanvasPainter : MonoBehaviour
                     continue;
                 }
 
-                float distance = Mathf.Sqrt(distanceSquared) / radius;
+                float distance = Mathf.Sqrt(distanceSquared) / Mathf.Max(radius, 1);
                 float alpha = Mathf.Clamp01((1f - distance) * opacity);
 
-                BlendPixel(x, y, paintColor, alpha);
+                Color32 shadedColor = enableWetPaintShading
+                    ? BuildWetPaintShade(paintColor, distance, Random.value, alpha * 0.65f)
+                    : paintColor;
+
+                BlendPixel(x, y, shadedColor, alpha);
             }
         }
+    }
+
+    private Color32 BuildWetPaintShade(
+        Color32 paintColor,
+        float normalizedDistance,
+        float noise,
+        float alpha01
+    )
+    {
+        Color color = paintColor;
+
+        float center = Mathf.Clamp01(1f - normalizedDistance);
+        float rim = Mathf.SmoothStep(0.0f, 1.0f, Mathf.InverseLerp(0.58f, 0.95f, normalizedDistance));
+        float noiseVariation = (noise - 0.5f) * pigmentVariation;
+
+        float brightness = 1f;
+        brightness -= wetCenterDarkening * center * Mathf.Clamp01(alpha01 + 0.25f);
+        brightness += raisedRimHighlight * rim * Mathf.Clamp01(alpha01 + 0.15f);
+        brightness += noiseVariation;
+
+        color.r = Mathf.Clamp01(color.r * brightness);
+        color.g = Mathf.Clamp01(color.g * brightness);
+        color.b = Mathf.Clamp01(color.b * brightness);
+        color.a = Mathf.Clamp01(color.a + glossyWetAlphaBoost * alpha01);
+
+        return color;
     }
 
     private void BlendPixel(int x, int y, Color32 paintColor, float alpha01)
@@ -438,7 +582,8 @@ public class CanvasPainter : MonoBehaviour
 
         int index = y * textureSize + x;
 
-        Color32 current = pixelBuffer[index];
+        Color32[] targetBuffer = stainBuffer != null ? stainBuffer : pixelBuffer;
+        Color32 current = targetBuffer[index];
 
         int colorAlpha = paintColor.a;
         int alpha = Mathf.Clamp(Mathf.RoundToInt(alpha01 * colorAlpha), 0, 255);
@@ -448,7 +593,140 @@ public class CanvasPainter : MonoBehaviour
         byte g = (byte)((current.g * inverseAlpha + paintColor.g * alpha) / 255);
         byte b = (byte)((current.b * inverseAlpha + paintColor.b * alpha) / 255);
 
-        pixelBuffer[index] = new Color32(r, g, b, 255);
+        targetBuffer[index] = new Color32(r, g, b, 255);
+    }
+
+
+    private void UpdateFluidCompositeIfNeeded()
+    {
+        if (!renderFluidFilmFromSurfaceState || fluidSurfaceState == null || !fluidSurfaceState.HasValidMaps)
+        {
+            if (textureDirty && stainBuffer != null && pixelBuffer != null)
+            {
+                System.Array.Copy(stainBuffer, pixelBuffer, pixelBuffer.Length);
+            }
+
+            return;
+        }
+
+        fluidRenderTimer += Time.deltaTime;
+
+        bool revisionChanged = fluidSurfaceState.dataRevision != lastFluidRevision;
+        bool intervalElapsed = fluidRenderTimer >= fluidTextureUpdateInterval;
+
+        if (!revisionChanged && !textureDirty && !intervalElapsed)
+        {
+            return;
+        }
+
+        fluidRenderTimer = 0f;
+        lastFluidRevision = fluidSurfaceState.dataRevision;
+
+        ComposeFluidFilmTexture();
+        textureDirty = true;
+        normalTextureDirty = generateFluidNormalMap;
+    }
+
+    private void ComposeFluidFilmTexture()
+    {
+        if (pixelBuffer == null || stainBuffer == null || fluidSurfaceState == null)
+        {
+            return;
+        }
+
+        float[] thickness = fluidSurfaceState.ThicknessMapRaw;
+        float[] wetness = fluidSurfaceState.WetnessMapRaw;
+        int resolution = fluidSurfaceState.Resolution;
+
+        if (thickness == null || wetness == null || resolution <= 1)
+        {
+            System.Array.Copy(stainBuffer, pixelBuffer, pixelBuffer.Length);
+            return;
+        }
+
+        Vector2 lightDirection = new Vector2(-0.45f, 0.75f).normalized;
+
+        for (int py = 0; py < textureSize; py++)
+        {
+            float v = py / (float)(textureSize - 1);
+            float sampleV = invertZ ? 1f - v : v;
+            int sy = Mathf.Clamp(Mathf.RoundToInt(sampleV * (resolution - 1)), 0, resolution - 1);
+
+            for (int px = 0; px < textureSize; px++)
+            {
+                int pixelIndex = py * textureSize + px;
+                Color32 baseColor = stainBuffer[pixelIndex];
+
+                float u = px / (float)(textureSize - 1);
+                float sampleU = invertX ? 1f - u : u;
+                int sx = Mathf.Clamp(Mathf.RoundToInt(sampleU * (resolution - 1)), 0, resolution - 1);
+                int mapIndex = sy * resolution + sx;
+
+                float h = Mathf.Max(0f, thickness[mapIndex]);
+                float w = Mathf.Clamp01(wetness[mapIndex]);
+
+                if (h <= 0.0001f && w <= 0.001f)
+                {
+                    pixelBuffer[pixelIndex] = baseColor;
+
+                    if (generateFluidNormalMap && normalBuffer != null)
+                    {
+                        normalBuffer[pixelIndex] = new Color32(128, 128, 255, 255);
+                    }
+
+                    continue;
+                }
+
+                float h01 = 1f - Mathf.Exp(-h * fluidThicknessVisibility);
+                float alpha = Mathf.Lerp(fluidDryAlpha, fluidWetAlpha, w) * h01;
+                alpha = Mathf.Clamp01(alpha);
+
+                float left = thickness[sy * resolution + Mathf.Max(0, sx - 1)];
+                float right = thickness[sy * resolution + Mathf.Min(resolution - 1, sx + 1)];
+                float down = thickness[Mathf.Max(0, sy - 1) * resolution + sx];
+                float up = thickness[Mathf.Min(resolution - 1, sy + 1) * resolution + sx];
+
+                Vector2 gradient = new Vector2(right - left, up - down);
+                float slope = Mathf.Clamp01(gradient.magnitude * 0.45f);
+                float shine = Mathf.Pow(Mathf.Clamp01(Vector2.Dot(-gradient.normalized, lightDirection) * 0.5f + 0.5f), 10f);
+                shine *= w * fluidSpecularStrength * Mathf.Clamp01(h01 + 0.25f);
+
+                Color fluidColor = Color.Lerp(thinWetPaintColor, thickWetPaintColor, Mathf.Clamp01(h01 * 1.35f));
+                fluidColor.r = Mathf.Clamp01(fluidColor.r + shine + slope * 0.035f);
+                fluidColor.g = Mathf.Clamp01(fluidColor.g + shine * 0.45f);
+                fluidColor.b = Mathf.Clamp01(fluidColor.b + shine * 0.35f);
+
+                pixelBuffer[pixelIndex] = AlphaBlend(baseColor, fluidColor, alpha);
+
+                if (generateFluidNormalMap && normalBuffer != null)
+                {
+                    Vector3 normal = new Vector3(
+                        -gradient.x * fluidNormalStrength,
+                        -gradient.y * fluidNormalStrength,
+                        1f
+                    ).normalized;
+
+                    normalBuffer[pixelIndex] = new Color32(
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((normal.x * 0.5f + 0.5f) * 255f), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((normal.y * 0.5f + 0.5f) * 255f), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((normal.z * 0.5f + 0.5f) * 255f), 0, 255),
+                        255
+                    );
+                }
+            }
+        }
+    }
+
+    private Color32 AlphaBlend(Color32 baseColor, Color overlayColor, float alpha)
+    {
+        alpha = Mathf.Clamp01(alpha * overlayColor.a);
+        float inverse = 1f - alpha;
+
+        byte r = (byte)Mathf.Clamp(Mathf.RoundToInt(baseColor.r * inverse + overlayColor.r * 255f * alpha), 0, 255);
+        byte g = (byte)Mathf.Clamp(Mathf.RoundToInt(baseColor.g * inverse + overlayColor.g * 255f * alpha), 0, 255);
+        byte b = (byte)Mathf.Clamp(Mathf.RoundToInt(baseColor.b * inverse + overlayColor.b * 255f * alpha), 0, 255);
+
+        return new Color32(r, g, b, 255);
     }
 
     public Texture2D GetCanvasTexture()

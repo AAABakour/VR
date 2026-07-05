@@ -16,6 +16,7 @@ public class SimulationPresetApplier : MonoBehaviour
     public PaintEmitter paintEmitter;
     public PaintParticleSimulator particleSimulator;
     public CanvasPainter canvasPainter;
+    public BucketInteriorLiquidSystemV2 bucketLiquid;
 
     [Header("Current Preset")]
     public SimulationPreset currentPreset = SimulationPreset.CleanSpiral;
@@ -59,6 +60,11 @@ public class SimulationPresetApplier : MonoBehaviour
         if (impactEngine == null)
         {
             impactEngine = Object.FindFirstObjectByType<PaintImpactEngineV2>();
+        }
+
+        if (bucketLiquid == null)
+        {
+            bucketLiquid = Object.FindFirstObjectByType<BucketInteriorLiquidSystemV2>();
         }
     }
 
@@ -125,6 +131,7 @@ public class SimulationPresetApplier : MonoBehaviour
                 break;
         }
 
+        ApplyPerformanceSafetyAfterPreset();
         ResetSimulationAfterPreset();
     }
 
@@ -440,6 +447,24 @@ public class SimulationPresetApplier : MonoBehaviour
         }
     }
 
+    private void ApplyPerformanceSafetyAfterPreset()
+    {
+        if (paintEmitter != null)
+        {
+            paintEmitter.clampParticleBurstPerFrame = true;
+            paintEmitter.maxParticlesEmittedPerFrame = Mathf.Clamp(paintEmitter.maxParticlesEmittedPerFrame, 16, 180);
+            paintEmitter.maxEmissionBacklog = Mathf.Clamp(paintEmitter.maxEmissionBacklog, 0f, 80f);
+        }
+
+        if (particleSimulator != null)
+        {
+            particleSimulator.maxParticles = Mathf.Clamp(particleSimulator.maxParticles, 100, 1800);
+            particleSimulator.maxParticlesSimulatedPerFrame = Mathf.Clamp(particleSimulator.maxParticlesSimulatedPerFrame, 100, particleSimulator.maxParticles);
+            particleSimulator.maxInteractionChecks = Mathf.Clamp(particleSimulator.maxInteractionChecks, 0, 16);
+            particleSimulator.SetMaxParticlesSafely(particleSimulator.maxParticles);
+        }
+    }
+
     private void ResetSimulationAfterPreset()
     {
         if (canvasPainter != null)
@@ -455,6 +480,16 @@ public class SimulationPresetApplier : MonoBehaviour
         if (paintEmitter != null)
         {
             paintEmitter.ResetEmitter();
+        }
+
+        if (bucketLiquid != null)
+        {
+            bucketLiquid.presentationBucketTransparency = false;
+            bucketLiquid.renderLiquidVolume = false;
+            bucketLiquid.renderMeniscus = true;
+            bucketLiquid.renderWetInnerWall = true;
+            bucketLiquid.RecalibrateNow();
+            bucketLiquid.ResetLiquidVisual();
         }
 
         if (pendulumController != null)

@@ -22,6 +22,19 @@ public class PaintSurfaceStateV2 : MonoBehaviour
     public float thicknessCoverageThreshold = 0.008f;
     public float wetnessCoverageThreshold = 0.04f;
 
+    [Header("Fluid Film Rendering")]
+    [Tooltip("This project now renders paint as a 2D surface-fluid film with texture/normal maps, not as raised mesh geometry.")]
+    public bool autoCreateRaisedPaintRenderer = false;
+    public PaintThicknessRendererV2 raisedPaintRenderer;
+    public bool autoLinkCanvasFluidRenderer = true;
+    public int dataRevision;
+
+    [Header("Thick Paint Deposition Model")]
+    public bool enableRaisedRimMass = true;
+    [Range(0f, 0.6f)] public float raisedRimMassStrength = 0.22f;
+    [Range(0.8f, 2.8f)] public float centralMassPower = 1.35f;
+    public float maxStableCellThickness = 32f;
+
     [Header("Runtime Stats")]
     public int totalImpacts;
     public int lastDepositedCells;
@@ -50,6 +63,10 @@ public class PaintSurfaceStateV2 : MonoBehaviour
         }
 
         InitializeMaps();
+        // Raised mesh rendering is intentionally disabled. The upgraded system uses a
+        // real surface-fluid height field plus texture/normal-map rendering instead.
+        DisableLegacyRaisedPaintRenderer();
+        LinkCanvasFluidRenderer();
     }
 
     void Update()
@@ -160,15 +177,29 @@ public class PaintSurfaceStateV2 : MonoBehaviour
                 }
 
                 float normalized = distance / Mathf.Max(irregularRadius, 0.0001f);
-                float falloff = 1f - normalized;
-                falloff *= falloff;
+                float falloff = Mathf.Clamp01(1f - normalized);
+
+                float coreFalloff = Mathf.Pow(falloff, centralMassPower);
+                float rimFalloff = 0f;
+
+                if (enableRaisedRimMass)
+                {
+                    float rimCenter = 0.72f;
+                    float rimWidth = 0.18f;
+                    float rimDistance = Mathf.Abs(normalized - rimCenter) / rimWidth;
+                    rimFalloff = Mathf.Clamp01(1f - rimDistance);
+                    rimFalloff *= rimFalloff * raisedRimMassStrength * Mathf.Lerp(1.15f, 0.35f, factors.absorption);
+                }
+
+                float massFalloff = Mathf.Clamp01(coreFalloff + rimFalloff);
+                float wetnessFalloff = Mathf.Sqrt(falloff);
 
                 int index = y * mapResolution + x;
 
-                float localMass = depositedMass * falloff;
-                float localWetness = depositedWetness * falloff;
+                float localMass = depositedMass * massFalloff;
+                float localWetness = depositedWetness * wetnessFalloff;
 
-                thicknessMap[index] += localMass;
+                thicknessMap[index] = Mathf.Min(maxStableCellThickness, thicknessMap[index] + localMass);
                 wetnessMap[index] = Mathf.Clamp01(wetnessMap[index] + localWetness);
 
                 Vector2 oldFlow = new Vector2(flowXMap[index], flowYMap[index]);
@@ -191,6 +222,7 @@ public class PaintSurfaceStateV2 : MonoBehaviour
 
         totalImpacts++;
         lastDepositedCells = depositedCells;
+        MarkDataChanged();
     }
 
     private struct SurfaceRuntimeFactors
@@ -370,6 +402,7 @@ public class PaintSurfaceStateV2 : MonoBehaviour
     private void StepDrying(float dt)
     {
         SurfaceRuntimeFactors factors = BuildFactors(activeSurfaceProfile);
+        bool changed = false;
 
         float drying = baseDryingStrength * Mathf.Max(0.05f, factors.dryingSpeed);
         float absorption = absorptionWetnessLoss * Mathf.Clamp01(factors.absorption);
@@ -387,7 +420,14 @@ public class PaintSurfaceStateV2 : MonoBehaviour
             float resistance = 1f + thickness * thickPaintDryingResistance;
             float wetnessLoss = (drying + absorption) * dt / resistance;
 
-            wetnessMap[i] = Mathf.Max(0f, wetness - wetnessLoss);
+            float newWetness = Mathf.Max(0f, wetness - wetnessLoss);
+
+            if (Mathf.Abs(newWetness - wetness) > 0.00001f)
+            {
+                changed = true;
+            }
+
+            wetnessMap[i] = newWetness;
 
             if (wetnessMap[i] <= 0.001f)
             {
@@ -395,6 +435,11 @@ public class PaintSurfaceStateV2 : MonoBehaviour
                 flowXMap[i] *= 0.5f;
                 flowYMap[i] *= 0.5f;
             }
+        }
+
+        if (changed)
+        {
+            MarkDataChanged();
         }
     }
 
@@ -469,9 +514,66 @@ public class PaintSurfaceStateV2 : MonoBehaviour
         thickCoverage01 = 0f;
         wetCoverage01 = 0f;
         averageWetness = 0f;
+        MarkDataChanged();
 
         dryingTimer = 0f;
         statsTimer = 0f;
+    }
+
+
+    public float[] ThicknessMapRaw
+    {
+        get { return thicknessMap; }
+    }
+
+    public float[] WetnessMapRaw
+    {
+        get { return wetnessMap; }
+    }
+
+    public float[] FlowXMapRaw
+    {
+        get { return flowXMap; }
+    }
+
+    public float[] FlowYMapRaw
+    {
+        get { return flowYMap; }
+    }
+
+    public void ReplaceMapsFromSolver(
+        float[] newThickness,
+        float[] newWetness,
+        float[] newFlowX,
+        float[] newFlowY
+    )
+    {
+        if (newThickness == null || newWetness == null || newFlowX == null || newFlowY == null)
+        {
+            return;
+        }
+
+        int expectedSize = mapResolution * mapResolution;
+
+        if (newThickness.Length != expectedSize ||
+            newWetness.Length != expectedSize ||
+            newFlowX.Length != expectedSize ||
+            newFlowY.Length != expectedSize)
+        {
+            return;
+        }
+
+        thicknessMap = newThickness;
+        wetnessMap = newWetness;
+        flowXMap = newFlowX;
+        flowYMap = newFlowY;
+
+        MarkDataChanged();
+    }
+
+    public void RecalculateStatsNow()
+    {
+        RecalculateStats();
     }
 
     public int Resolution
@@ -544,11 +646,13 @@ public class PaintSurfaceStateV2 : MonoBehaviour
 
         int index = y * mapResolution + x;
 
-        thicknessMap[index] = Mathf.Max(0f, thickness);
+        thicknessMap[index] = Mathf.Clamp(thickness, 0f, maxStableCellThickness);
         wetnessMap[index] = Mathf.Clamp01(wetness);
 
         flowXMap[index] = flow.x;
         flowYMap[index] = flow.y;
+
+        MarkDataChanged();
     }
 
     public void AddToCell(
@@ -567,7 +671,7 @@ public class PaintSurfaceStateV2 : MonoBehaviour
 
         int index = y * mapResolution + x;
 
-        thicknessMap[index] = Mathf.Max(0f, thicknessMap[index] + addedThickness);
+        thicknessMap[index] = Mathf.Clamp(thicknessMap[index] + addedThickness, 0f, maxStableCellThickness);
         wetnessMap[index] = Mathf.Clamp01(wetnessMap[index] + addedWetness);
 
         Vector2 oldFlow = new Vector2(flowXMap[index], flowYMap[index]);
@@ -575,6 +679,8 @@ public class PaintSurfaceStateV2 : MonoBehaviour
 
         flowXMap[index] = blendedFlow.x;
         flowYMap[index] = blendedFlow.y;
+
+        MarkDataChanged();
     }
 
     public bool TryGetWorldPositionFromCell(int x, int y, out Vector3 worldPosition)
@@ -597,6 +703,99 @@ public class PaintSurfaceStateV2 : MonoBehaviour
 
         worldPosition = surfaceTransform.TransformPoint(localPoint);
         return true;
+    }
+
+
+    private void LinkCanvasFluidRenderer()
+    {
+        if (!autoLinkCanvasFluidRenderer)
+        {
+            return;
+        }
+
+        CanvasPainter painter = GetComponent<CanvasPainter>();
+
+        if (painter == null)
+        {
+            painter = Object.FindFirstObjectByType<CanvasPainter>();
+        }
+
+        if (painter == null)
+        {
+            return;
+        }
+
+        painter.fluidSurfaceState = this;
+        painter.renderFluidFilmFromSurfaceState = true;
+    }
+
+    private void DisableLegacyRaisedPaintRenderer()
+    {
+        if (raisedPaintRenderer == null)
+        {
+            raisedPaintRenderer = GetComponent<PaintThicknessRendererV2>();
+        }
+
+        if (raisedPaintRenderer != null)
+        {
+            raisedPaintRenderer.enableRaisedPaintMesh = false;
+            raisedPaintRenderer.enabled = false;
+        }
+    }
+
+    public void MarkDataChanged()
+    {
+        dataRevision++;
+    }
+
+    public bool TryGetCellFromWorldPosition(Vector3 worldPosition, out int x, out int y)
+    {
+        return WorldToMapCell(worldPosition, out x, out y);
+    }
+
+    public float SampleThicknessBilinear(float u, float v)
+    {
+        return SampleMapBilinear(thicknessMap, u, v);
+    }
+
+    public float SampleWetnessBilinear(float u, float v)
+    {
+        return SampleMapBilinear(wetnessMap, u, v);
+    }
+
+    private float SampleMapBilinear(float[] map, float u, float v)
+    {
+        if (map == null || mapResolution <= 1)
+        {
+            return 0f;
+        }
+
+        u = Mathf.Clamp01(u);
+        v = Mathf.Clamp01(v);
+
+        float fx = u * (mapResolution - 1);
+        float fy = v * (mapResolution - 1);
+
+        int x0 = Mathf.FloorToInt(fx);
+        int y0 = Mathf.FloorToInt(fy);
+        int x1 = Mathf.Min(x0 + 1, mapResolution - 1);
+        int y1 = Mathf.Min(y0 + 1, mapResolution - 1);
+
+        float tx = fx - x0;
+        float ty = fy - y0;
+
+        float a = map[y0 * mapResolution + x0];
+        float b = map[y0 * mapResolution + x1];
+        float c = map[y1 * mapResolution + x0];
+        float d = map[y1 * mapResolution + x1];
+
+        return Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), ty);
+    }
+
+    public float GetNormalizedThicknessAtCell(int x, int y, float sensitivity = 0.28f)
+    {
+        float thickness = GetThicknessAtCell(x, y);
+        return 1f - Mathf.Exp(-Mathf.Max(0f, thickness) * sensitivity);
     }
 
 }

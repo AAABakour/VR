@@ -22,6 +22,8 @@ public class PaintDripSolverV2 : MonoBehaviour
     public float storedFlowInfluence = 0.85f;
     public float surfaceSlipMultiplier = 1.0f;
     public float maxTransferFraction = 0.22f;
+    [Range(0f, 1f)] public float thickPaintDrag = 0.62f;
+    public float gravityTrailCoherence = 0.72f;
 
     [Header("Direction Behavior")]
     public float diagonalBias = 0.35f;
@@ -152,9 +154,14 @@ public class PaintDripSolverV2 : MonoBehaviour
 
         float excessThickness = Mathf.Max(0f, thickness - minThicknessForFlow);
 
+        float thicknessDrag = Mathf.Lerp(1f, 0.35f, Mathf.Clamp01(thickness * thickPaintDrag * 0.08f));
+        float wetFlowGate = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(minWetnessForFlow, 1f, wetness));
+
         float movable =
             excessThickness *
             wetness *
+            wetFlowGate *
+            thicknessDrag *
             baseFlowRate *
             surfaceSlipMultiplier *
             factors.slip *
@@ -251,6 +258,11 @@ public class PaintDripSolverV2 : MonoBehaviour
         Vector2 direction =
             gravityFlow * gravityInfluence +
             storedFlow * storedFlowInfluence;
+
+        if (gravityFlow.sqrMagnitude > 0.0001f && storedFlow.sqrMagnitude > 0.0001f)
+        {
+            direction = Vector2.Lerp(direction, gravityFlow, gravityTrailCoherence * 0.35f);
+        }
 
         if (direction.sqrMagnitude < 0.0001f)
         {
