@@ -1,0 +1,56 @@
+# Unity generated files
+/Library/
+/Temp/
+/Obj/
+/obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/Assets/_Recovery/
+/Assets/_Recovery.meta
+
+# IDE and editor state
+/.vs/
+/.vscode/
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity/Visual Studio generated project files
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Final branches: keep only experiment-critical models/textures.
+# Environment workshop models remain local and are intentionally not uploaded.
+/Assets/Models/**
+!/Assets/Models/Bucket.meta
+!/Assets/Models/Bucket/
+!/Assets/Models/Bucket/**
+!/Assets/Models/Rope holder.meta
+!/Assets/Models/Rope holder/
+!/Assets/Models/Rope holder/**
+
+/Assets/Textures/**
+!/Assets/Textures/Bucket.meta
+!/Assets/Textures/Bucket/
+!/Assets/Textures/Bucket/**
+!/Assets/Textures/Rope holder.meta
+!/Assets/Textures/Rope holder/
+!/Assets/Textures/Rope holder/**
+!/Assets/Textures/TEX_Rope_*.png
+!/Assets/Textures/TEX_Rope_*.png.meta

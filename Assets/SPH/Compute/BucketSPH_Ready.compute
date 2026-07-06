@@ -1,0 +1,161 @@
+#pragma kernel CSClearGrid
+#pragma kernel CSInitializeParticles
+#pragma kernel CSBuildSpatialGrid
+#pragma kernel CSApplyForces
+#pragma kernel CSResolveBucketCollisions
+#pragma kernel CSGenerateRenderParticles
+
+struct SphParticle
+{
+    float3 position;
+    float radius;
+    float3 velocity;
+    float density;
+    float4 color;
+    float pressure;
+    float viscosity;
+    float life;
+    float flags;
+};
+
+RWStructuredBuffer<SphParticle> _Particles;
+RWStructuredBuffer<uint> _GridCounts;
+RWStructuredBuffer<uint> _GridOffsets;
+RWStructuredBuffer<float4> _RenderParticles;
+
+int _ParticleCount;
+int _GridCellCount;
+float _DeltaTime;
+float3 _Gravity;
+float3 _BucketCenter;
+float _BucketRadius;
+float _BucketBottomY;
+float _BucketRimY;
+float4 _PaintColor;
+
+[numthreads(256, 1, 1)]
+void CSClearGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_GridCellCount)
+    {
+        return;
+    }
+
+    _GridCounts[index] = 0;
+    _GridOffsets[index] = 0;
+}
+
+[numthreads(256, 1, 1)]
+void CSInitializeParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    float ring = sqrt((index + 0.5) / max(1.0, (float)_ParticleCount));
+    float angle = index * 2.39996323;
+    float3 p = _BucketCenter + float3(cos(angle), 0.0, sin(angle)) * ring * _BucketRadius * 0.82;
+    p.y = lerp(_BucketBottomY + 0.05, _BucketRimY - 0.08, frac(index * 0.61803398875));
+
+    SphParticle particle;
+    particle.position = p;
+    particle.radius = 0.012;
+    particle.velocity = 0;
+    particle.density = 1050.0;
+    particle.color = _PaintColor;
+    particle.pressure = 0.0;
+    particle.viscosity = 4.8;
+    particle.life = 1.0;
+    particle.flags = 1.0;
+
+    _Particles[index] = particle;
+}
+
+[numthreads(256, 1, 1)]
+void CSBuildSpatialGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount || _GridCellCount <= 0)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    uint hash = (uint)abs((int)(particle.position.x * 73856093) ^ (int)(particle.position.y * 19349663) ^ (int)(particle.position.z * 83492791));
+    uint cell = hash % (uint)_GridCellCount;
+    InterlockedAdd(_GridCounts[cell], 1);
+}
+
+[numthreads(256, 1, 1)]
+void CSApplyForces(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    float safeViscosity = max(0.05, particle.viscosity);
+    float drag = saturate(1.0 - (_DeltaTime * 0.18 / safeViscosity));
+
+    particle.velocity += _Gravity * _DeltaTime;
+    particle.velocity *= drag;
+    particle.position += particle.velocity * _DeltaTime;
+
+    _Particles[index] = particle;
+}
+
+[numthreads(256, 1, 1)]
+void CSResolveBucketCollisions(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    float2 horizontal = particle.position.xz - _BucketCenter.xz;
+    float distanceToAxis = max(0.0001, length(horizontal));
+    float maxRadius = max(0.001, _BucketRadius - particle.radius);
+
+    if (distanceToAxis > maxRadius)
+    {
+        float2 n = horizontal / distanceToAxis;
+        particle.position.xz = _BucketCenter.xz + n * maxRadius;
+        float outwardSpeed = dot(particle.velocity.xz, n);
+        particle.velocity.xz -= n * max(0.0, outwardSpeed) * 1.35;
+        particle.velocity.xz *= 0.82;
+    }
+
+    if (particle.position.y < _BucketBottomY + particle.radius)
+    {
+        particle.position.y = _BucketBottomY + particle.radius;
+        particle.velocity.y = abs(particle.velocity.y) * 0.12;
+        particle.velocity.xz *= 0.88;
+    }
+
+    if (particle.position.y > _BucketRimY)
+    {
+        particle.flags = 2.0;
+    }
+
+    _Particles[index] = particle;
+}
+
+[numthreads(256, 1, 1)]
+void CSGenerateRenderParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    _RenderParticles[index] = float4(particle.position, particle.radius);
+}

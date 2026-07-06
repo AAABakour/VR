@@ -1,0 +1,475 @@
+#pragma kernel CSInitializeParticles
+#pragma kernel CSClearGrid
+#pragma kernel CSBuildGrid
+#pragma kernel CSComputeDensityPressure
+#pragma kernel CSIntegrateSph
+#pragma kernel CSGenerateRenderParticles
+
+// Phase 04 GPU SPH Core + Visual Reconstruction
+// ------------------------------------------------------------
+// This compute shader keeps the million-particle data on the GPU.
+// It uses a bounded uniform grid with per-cell slots so the CPU never
+// iterates over particles. The implementation is intentionally stable
+// for VR delivery: capped neighbor scans, bounded velocities, batched
+// rendering and simple bucket/surface collision.
+
+struct SphParticle
+{
+    float3 position;
+    float radius;
+    float3 velocity;
+    float density;
+    float4 color;
+    float pressure;
+    float viscosity;
+    float life;
+    float flags;
+};
+
+RWStructuredBuffer<SphParticle> _Particles;
+RWStructuredBuffer<float4> _RenderParticles;
+RWStructuredBuffer<uint> _GridCellCounts;
+RWStructuredBuffer<uint> _GridParticleIndices;
+
+int _ParticleCount;
+int _VisibleParticleCount;
+int _RenderStride;
+int _CellCount;
+int _GridMaxParticlesPerCell;
+int3 _GridResolution;
+
+float _DeltaTime;
+float _ParticleRadius;
+float _RenderRadiusScale;
+float _BucketRadius;
+float _BucketBottomY;
+float _BucketRimY;
+float _BucketFill01;
+float _BucketWallBounce;
+float _ViscosityDrag;
+float _CohesionStrength;
+float _SurfaceY;
+float _EnableSurfacePlane;
+float _PourTiltThreshold;
+float _PourBandHeight;
+float _SpillPush;
+float _TimeSeconds;
+float _SmoothingRadius;
+float _RestDensity;
+float _PressureStiffness;
+float _NearPressureStiffness;
+float _ViscosityStrength;
+float _SurfaceTension;
+float _BoundaryDamping;
+float _MaxVelocity;
+float _DensityToColorBoost;
+float _ContainedRenderScale;
+float _AirborneRenderScale;
+float _DepositedRenderScale;
+float _VelocityRadiusGain;
+float _DensityRadiusGain;
+
+float3 _Gravity;
+float3 _GravityLocal;
+float3 _BucketVelocity;
+float3 _SloshAcceleration;
+float3 _GridOriginLocal;
+float3 _GridSizeLocal;
+float4 _PaintColor;
+float4x4 _BucketToWorld;
+float4x4 _WorldToBucket;
+
+float Hash01(uint x)
+{
+    x ^= x >> 17;
+    x *= 0xed5ad4bbU;
+    x ^= x >> 11;
+    x *= 0xac4c1b51U;
+    x ^= x >> 15;
+    x *= 0x31848babU;
+    x ^= x >> 14;
+    return (x & 0x00ffffffU) / 16777215.0;
+}
+
+float2 GoldenDisk(uint index, uint count)
+{
+    float fi = (float)index + 0.5;
+    float n = max(1.0, (float)count);
+    float r = sqrt(frac(fi * 0.754877666 + n * 0.000013));
+    float a = fi * 2.399963229728653;
+    return float2(cos(a), sin(a)) * r;
+}
+
+int3 ClampCell(int3 c)
+{
+    return clamp(c, int3(0, 0, 0), max(int3(0, 0, 0), _GridResolution - int3(1, 1, 1)));
+}
+
+bool IsValidCell(int3 c)
+{
+    return all(c >= int3(0, 0, 0)) && all(c < _GridResolution);
+}
+
+uint FlattenCell(int3 c)
+{
+    c = ClampCell(c);
+    return (uint)((c.z * _GridResolution.y + c.y) * _GridResolution.x + c.x);
+}
+
+int3 WorldToCell(float3 worldPosition)
+{
+    float3 local = mul(_WorldToBucket, float4(worldPosition, 1.0)).xyz;
+    float3 size = max(_GridSizeLocal, float3(0.001, 0.001, 0.001));
+    float3 uvw = saturate((local - _GridOriginLocal) / size);
+    float3 gridResolutionF = float3((float)_GridResolution.x, (float)_GridResolution.y, (float)_GridResolution.z);
+    int3 cell = (int3)floor(uvw * gridResolutionF);
+    return ClampCell(cell);
+}
+
+float3 LimitVector(float3 v, float maxLen)
+{
+    float l2 = dot(v, v);
+    float m = max(0.001, maxLen);
+    if (l2 > m * m)
+    {
+        return v * (m * rsqrt(max(0.000001, l2)));
+    }
+    return v;
+}
+
+float CubicWeight(float distance, float h)
+{
+    float q = saturate(1.0 - distance / max(0.0001, h));
+    return q * q * q;
+}
+
+[numthreads(256, 1, 1)]
+void CSInitializeParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    float fillHeight = lerp(_BucketBottomY + _ParticleRadius * 2.0, _BucketRimY - _ParticleRadius * 2.5, saturate(_BucketFill01));
+    float slice = frac((float)index * 0.61803398875);
+    float y = lerp(_BucketBottomY + _ParticleRadius * 1.5, fillHeight, slice);
+
+    float localRadius = max(0.001, _BucketRadius - _ParticleRadius * 2.0);
+    float2 disk = GoldenDisk(index, (uint)_ParticleCount) * localRadius * 0.92;
+
+    float jitterA = (Hash01(index * 9176U + 13U) - 0.5) * _ParticleRadius * 0.35;
+    float jitterB = (Hash01(index * 6113U + 71U) - 0.5) * _ParticleRadius * 0.35;
+    float3 localPosition = float3(disk.x + jitterA, y, disk.y + jitterB);
+    float3 worldPosition = mul(_BucketToWorld, float4(localPosition, 1.0)).xyz;
+
+    SphParticle particle;
+    particle.position = worldPosition;
+    particle.radius = _ParticleRadius;
+    particle.velocity = _BucketVelocity * 0.25;
+    particle.density = _RestDensity;
+    particle.color = _PaintColor;
+    particle.pressure = 0.0;
+    particle.viscosity = max(0.05, _ViscosityDrag);
+    particle.life = 1.0;
+    particle.flags = 1.0; // 1 contained, 2 airborne/pouring, 3 deposited
+
+    _Particles[index] = particle;
+}
+
+[numthreads(256, 1, 1)]
+void CSClearGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint cell = id.x;
+    if (cell >= (uint)_CellCount)
+    {
+        return;
+    }
+
+    _GridCellCounts[cell] = 0;
+}
+
+[numthreads(256, 1, 1)]
+void CSBuildGrid(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    int3 cell = WorldToCell(particle.position);
+    uint flatCell = FlattenCell(cell);
+
+    uint previousCount;
+    InterlockedAdd(_GridCellCounts[flatCell], 1u, previousCount);
+
+    uint slotCount = (uint)max(1, _GridMaxParticlesPerCell);
+    if (previousCount < slotCount)
+    {
+        _GridParticleIndices[flatCell * slotCount + previousCount] = index;
+    }
+}
+
+[numthreads(256, 1, 1)]
+void CSComputeDensityPressure(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    int3 baseCell = WorldToCell(particle.position);
+    float h = max(_SmoothingRadius, _ParticleRadius * 2.1);
+    float neighborDensity = 1.0;
+    float nearDensity = 0.0;
+    uint maxSlots = (uint)max(1, _GridMaxParticlesPerCell);
+
+    [loop]
+    for (int z = -1; z <= 1; z++)
+    {
+        [loop]
+        for (int y = -1; y <= 1; y++)
+        {
+            [loop]
+            for (int x = -1; x <= 1; x++)
+            {
+                int3 cell = baseCell + int3(x, y, z);
+                if (!IsValidCell(cell))
+                {
+                    continue;
+                }
+
+                uint flatCell = FlattenCell(cell);
+                uint count = min(_GridCellCounts[flatCell], maxSlots);
+                uint baseSlot = flatCell * maxSlots;
+
+                [loop]
+                for (uint s = 0; s < count; s++)
+                {
+                    uint otherIndex = _GridParticleIndices[baseSlot + s];
+                    if (otherIndex >= (uint)_ParticleCount || otherIndex == index)
+                    {
+                        continue;
+                    }
+
+                    SphParticle other = _Particles[otherIndex];
+                    float distance = length(particle.position - other.position);
+                    float w = CubicWeight(distance, h);
+                    neighborDensity += w;
+                    nearDensity += w * w;
+                }
+            }
+        }
+    }
+
+    particle.density = neighborDensity;
+    float densityError = max(0.0, neighborDensity - max(0.1, _RestDensity));
+    float nearError = max(0.0, nearDensity - max(0.1, _RestDensity * 0.35));
+    particle.pressure = densityError * _PressureStiffness + nearError * _NearPressureStiffness;
+    particle.color = float4(_PaintColor.rgb * (1.0 + saturate(densityError * 0.05) * _DensityToColorBoost), _PaintColor.a);
+    _Particles[index] = particle;
+}
+
+void ApplyBucketAndSurfaceBoundaries(inout SphParticle particle, inout float3 worldPosition, inout float3 worldVelocity, float radius)
+{
+    float3 localPosition = mul(_WorldToBucket, float4(worldPosition, 1.0)).xyz;
+    float3 localVelocity = mul((float3x3)_WorldToBucket, worldVelocity);
+
+    if (particle.flags < 1.5)
+    {
+        float radial = length(localPosition.xz);
+        float maxRadius = max(0.001, _BucketRadius - radius);
+
+        if (radial > maxRadius)
+        {
+            float2 normal2 = localPosition.xz / max(0.0001, radial);
+            localPosition.xz = normal2 * maxRadius;
+            float outward = dot(localVelocity.xz, normal2);
+            localVelocity.xz -= normal2 * max(0.0, outward) * (1.0 + _BucketWallBounce);
+            localVelocity.xz *= saturate(1.0 - _BoundaryDamping * 0.35);
+        }
+
+        if (localPosition.y < _BucketBottomY + radius)
+        {
+            localPosition.y = _BucketBottomY + radius;
+            localVelocity.y = abs(localVelocity.y) * 0.08;
+            localVelocity.xz *= saturate(1.0 - _BoundaryDamping * 0.25);
+        }
+
+        float tilt01 = saturate(length(_GravityLocal.xz) / max(0.001, length(_GravityLocal)));
+        float2 downhill = length(_GravityLocal.xz) > 0.001 ? normalize(_GravityLocal.xz) : float2(0.0, 0.0);
+        float side01 = radial > 0.0001 ? dot(localPosition.xz / radial, downhill) : 0.0;
+        bool highEnough = localPosition.y > (_BucketRimY - max(_PourBandHeight, radius * 2.0));
+        bool canSpill = tilt01 > _PourTiltThreshold && highEnough && side01 > 0.20;
+
+        if (canSpill)
+        {
+            particle.flags = 2.0;
+            localPosition.y = max(localPosition.y, _BucketRimY + radius * 0.35);
+            localVelocity.xz += downhill * _SpillPush * saturate((side01 + tilt01) * 0.5);
+            localVelocity.y += abs(_GravityLocal.y) * 0.025;
+        }
+
+        worldPosition = mul(_BucketToWorld, float4(localPosition, 1.0)).xyz;
+        worldVelocity = mul((float3x3)_BucketToWorld, localVelocity);
+    }
+    else if (particle.flags < 2.5)
+    {
+        if (_EnableSurfacePlane > 0.5 && worldPosition.y <= _SurfaceY + radius)
+        {
+            worldPosition.y = _SurfaceY + radius;
+            if (worldVelocity.y < 0.0)
+            {
+                worldVelocity.y *= -0.05;
+            }
+            worldVelocity.xz *= 0.82;
+            particle.flags = 3.0;
+            particle.life = 1.0;
+        }
+    }
+    else
+    {
+        if (_EnableSurfacePlane > 0.5)
+        {
+            worldPosition.y = max(worldPosition.y, _SurfaceY + radius);
+        }
+        worldVelocity *= saturate(1.0 - _DeltaTime * 4.0);
+    }
+}
+
+[numthreads(256, 1, 1)]
+void CSIntegrateSph(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)_ParticleCount)
+    {
+        return;
+    }
+
+    SphParticle particle = _Particles[index];
+    float dt = min(_DeltaTime, 0.02);
+    float radius = max(0.001, particle.radius);
+    float h = max(_SmoothingRadius, radius * 2.1);
+    int3 baseCell = WorldToCell(particle.position);
+    uint maxSlots = (uint)max(1, _GridMaxParticlesPerCell);
+
+    float3 force = _Gravity + _SloshAcceleration;
+
+    if (particle.flags < 2.5)
+    {
+        [loop]
+        for (int z = -1; z <= 1; z++)
+        {
+            [loop]
+            for (int y = -1; y <= 1; y++)
+            {
+                [loop]
+                for (int x = -1; x <= 1; x++)
+                {
+                    int3 cell = baseCell + int3(x, y, z);
+                    if (!IsValidCell(cell))
+                    {
+                        continue;
+                    }
+
+                    uint flatCell = FlattenCell(cell);
+                    uint count = min(_GridCellCounts[flatCell], maxSlots);
+                    uint baseSlot = flatCell * maxSlots;
+
+                    [loop]
+                    for (uint s = 0; s < count; s++)
+                    {
+                        uint otherIndex = _GridParticleIndices[baseSlot + s];
+                        if (otherIndex >= (uint)_ParticleCount || otherIndex == index)
+                        {
+                            continue;
+                        }
+
+                        SphParticle other = _Particles[otherIndex];
+                        float3 delta = particle.position - other.position;
+                        float dist2 = dot(delta, delta);
+                        if (dist2 < 0.0000001)
+                        {
+                            continue;
+                        }
+
+                        float distance = sqrt(dist2);
+                        if (distance > h)
+                        {
+                            continue;
+                        }
+
+                        float3 dir = delta / distance;
+                        float q = saturate(1.0 - distance / h);
+                        float pressurePair = (particle.pressure + other.pressure) * 0.5;
+                        force += dir * pressurePair * q;
+                        force += (other.velocity - particle.velocity) * (_ViscosityStrength * q);
+                        force -= dir * (_SurfaceTension * q * q);
+                    }
+                }
+            }
+        }
+
+        // Paint should feel heavy and viscous, especially while still contained.
+        float drag = saturate(1.0 - dt * max(0.0, _ViscosityDrag));
+        particle.velocity = particle.velocity * drag + force * dt;
+    }
+
+    particle.velocity = LimitVector(particle.velocity, _MaxVelocity);
+    float3 worldPosition = particle.position + particle.velocity * dt;
+    float3 worldVelocity = particle.velocity;
+
+    ApplyBucketAndSurfaceBoundaries(particle, worldPosition, worldVelocity, radius);
+
+    particle.position = worldPosition;
+    particle.velocity = LimitVector(worldVelocity, _MaxVelocity);
+    _Particles[index] = particle;
+}
+
+[numthreads(256, 1, 1)]
+void CSGenerateRenderParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint renderIndex = id.x;
+    if (renderIndex >= (uint)_VisibleParticleCount)
+    {
+        return;
+    }
+
+    uint particleIndex = renderIndex * (uint)max(1, _RenderStride);
+    if (particleIndex >= (uint)_ParticleCount)
+    {
+        _RenderParticles[renderIndex] = float4(0.0, -10000.0, 0.0, 0.001);
+        return;
+    }
+
+    SphParticle particle = _Particles[particleIndex];
+    float speed01 = saturate(length(particle.velocity) * _VelocityRadiusGain);
+    float density01 = saturate(max(0.0, particle.density - _RestDensity) * _DensityRadiusGain);
+    float phaseScale = 1.0;
+
+    // Phase 04: contained paint is represented mostly by the smooth volume
+    // reconstruction mesh. The actual contained particles stay on the GPU
+    // for physics, but render much smaller so the bucket no longer looks
+    // like a noisy point cloud. Airborne particles are enlarged into
+    // cohesive blobs/droplets, and deposited particles are flattened visually.
+    if (particle.flags < 1.5)
+    {
+        phaseScale = max(0.0, _ContainedRenderScale);
+    }
+    else if (particle.flags < 2.5)
+    {
+        phaseScale = max(0.05, _AirborneRenderScale) * (1.0 + speed01 * 0.55);
+    }
+    else
+    {
+        phaseScale = max(0.02, _DepositedRenderScale);
+    }
+
+    float visibleRadius = max(0.00035, particle.radius * _RenderRadiusScale * phaseScale * (1.0 + density01));
+    _RenderParticles[renderIndex] = float4(particle.position, visibleRadius);
+}
